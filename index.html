@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JM Repuestos</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f0f;--bg2:#161616;--bg3:#1e1e1e;--bg4:#252525;
+  --border:#2a2a2a;--border2:#333;
+  --text:#e8e8e8;--text2:#999;--text3:#555;
+  --accent:#e8a020;--accent2:#c07010;
+  --danger:#e05050;--success:#40b070;--info:#4090e0;
+  --r:8px;--r2:12px;
+}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;overflow:hidden}
+#app{display:flex;height:100vh}
+
+/* SIDEBAR */
+#sidebar{width:210px;min-width:210px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.logo{padding:16px;border-bottom:1px solid var(--border)}
+.logo-main{font-size:20px;font-weight:700;color:var(--accent)}
+.logo-sub{font-size:9px;color:var(--text3);letter-spacing:2px;text-transform:uppercase;margin-top:2px}
+.nav{flex:1;padding:10px 0;overflow-y:auto}
+.nav-sec{padding:8px 14px 3px;font-size:9px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase}
+.ni{display:flex;align-items:center;gap:8px;padding:8px 14px;cursor:pointer;color:var(--text2);font-size:12px;border-left:2px solid transparent;transition:.15s}
+.ni:hover{background:var(--bg3);color:var(--text)}
+.ni.active{background:var(--bg3);color:var(--accent);border-left-color:var(--accent)}
+.ni i{font-size:15px;width:16px}
+.badge-count{margin-left:auto;background:var(--danger);color:#fff;font-size:9px;padding:1px 5px;border-radius:10px}
+
+/* MAIN */
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:10px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.topbar-title{font-size:15px;font-weight:500}
+.topbar-right{display:flex;gap:8px;align-items:center}
+
+/* BUTTONS */
+.btn{padding:6px 12px;border-radius:var(--r);font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--border2);background:var(--bg3);color:var(--text);transition:.15s;display:inline-flex;align-items:center;gap:5px}
+.btn:hover{background:var(--bg4)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#000}
+.btn.primary:hover{background:var(--accent2)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.success{background:var(--success);border-color:var(--success);color:#fff}
+.btn.info{background:var(--info);border-color:var(--info);color:#fff}
+.btn.sm{padding:4px 9px;font-size:11px}
+
+/* FORMS */
+input,select,textarea{padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;outline:none;font-family:inherit;width:100%}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+select option{background:var(--bg3)}
+label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:4px}
+
+/* PAGES */
+.page{flex:1;overflow-y:auto;padding:18px 20px;display:none}
+.page.active{display:block}
+
+/* CARDS */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px;margin-bottom:14px}
+.card-title{font-size:10px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px;font-weight:500}
+
+/* TABLES */
+table{width:100%;border-collapse:collapse}
+th{padding:7px 10px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:500}
+td{padding:8px 10px;border-bottom:1px solid var(--border);color:var(--text2);font-size:12px}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:var(--bg3);color:var(--text)}
+
+/* BADGES */
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:9px;font-weight:600;text-transform:uppercase}
+.b-ok{background:rgba(64,176,112,.15);color:var(--success)}
+.b-low{background:rgba(224,80,80,.15);color:var(--danger)}
+.b-med{background:rgba(232,160,32,.15);color:var(--accent)}
+.b-info{background:rgba(64,144,224,.15);color:var(--info)}
+.b-gray{background:rgba(150,150,150,.15);color:var(--text2)}
+
+/* METRICS */
+.mg{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.mc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);padding:14px 16px}
+.mc-label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px}
+.mc-val{font-size:22px;font-weight:700;margin:4px 0}
+.mc-sub{font-size:10px;color:var(--text2)}
+.up{color:var(--success)}.down{color:var(--danger)}
+
+/* FILTRO CASCADA */
+.cascada{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2)}
+.cascada .fg{flex:1;min-width:110px}
+.cascada .sep{color:var(--text3);font-size:18px;padding-bottom:6px;flex-shrink:0}
+
+/* PRODUCT ROWS */
+.prod-row{display:grid;grid-template-columns:90px 1fr 90px 70px 90px 80px;gap:0;border-bottom:1px solid var(--border);cursor:pointer;transition:.1s}
+.prod-row:hover{background:var(--bg3)}
+.prod-row>div{padding:9px 10px;font-size:12px;display:flex;align-items:center}
+.prod-row.header>div{padding:6px 10px;font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;border-bottom:1px solid var(--border2);background:var(--bg2);cursor:default}
+
+/* MODAL */
+.modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);width:880px;max-width:96vw;max-height:92vh;overflow-y:auto}
+.modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1}
+.modal-body{padding:20px}
+.modal-title{font-size:15px;font-weight:600}
+
+/* FICHA */
+.ficha-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:12px}
+.ficha-grid.half{grid-template-columns:1fr 1fr}
+.fg-item{display:flex;flex-direction:column;gap:4px}
+.section-title{font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin:16px 0 10px;border-bottom:1px solid var(--border);padding-bottom:6px}
+
+/* APP TABLE */
+.app-table{width:100%;border-collapse:collapse;font-size:12px}
+.app-table th{background:var(--bg3);padding:6px 10px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:.8px;text-transform:uppercase;border:1px solid var(--border)}
+.app-table td{padding:5px 6px;border:1px solid var(--border);color:var(--text2)}
+.app-table tr:hover td{background:var(--bg3)}
+
+/* EQUIV TABS */
+.etab{padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px;color:var(--text2);border:1px solid var(--border);background:var(--bg3);transition:.15s;display:inline-flex;align-items:center;gap:5px;margin-right:4px}
+.etab.active{border-color:var(--accent);color:var(--accent);background:rgba(232,160,32,.08)}
+.etab.sust.active{border-color:var(--danger);color:var(--danger);background:rgba(224,80,80,.08)}
+
+/* MEDIDAS */
+.medidas-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.med-item{display:flex;flex-direction:column;gap:3px}
+
+/* TOP VENDIDOS */
+.top-row{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--r);border:1px solid var(--border);margin-bottom:6px;transition:.15s}
+.top-row:hover{border-color:var(--accent);background:var(--bg3)}
+.rank-num{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;flex-shrink:0}
+.rank1{background:rgba(232,160,32,.2);color:var(--accent)}
+.rank2{background:rgba(180,180,180,.15);color:var(--text2)}
+.rank3{background:rgba(176,120,64,.15);color:#c07010}
+.rankn{background:var(--bg3);color:var(--text3)}
+.top-bar-fill{height:4px;background:var(--bg4);border-radius:2px;margin-top:5px}
+.top-bar-inner{height:4px;background:var(--accent);border-radius:2px}
+
+/* ALERTAS */
+.alerta-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r);border-left:3px solid var(--danger);background:rgba(224,80,80,.06);margin-bottom:8px}
+.alerta-row.med{border-left-color:var(--accent);background:rgba(232,160,32,.06)}
+
+/* PROV */
+.prov-tag{display:inline-flex;align-items:center;padding:2px 7px;border-radius:20px;font-size:10px;background:rgba(64,144,224,.12);color:var(--info);border:1px solid rgba(64,144,224,.2)}
+.prov-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:12px}
+.prov-card.best{border-color:var(--success)}
+
+/* TABS */
+.tabs-row{display:flex;gap:2px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);padding:3px;width:fit-content;margin-bottom:12px}
+.tab{padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px;color:var(--text2);transition:.15s}
+.tab.active{background:var(--accent);color:#000;font-weight:500}
+
+/* HIST */
+.hist-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px}
+.hist-date{color:var(--text3);min-width:80px}
+
+/* ADMIN TABLE */
+.admin-table input{padding:4px 6px;font-size:11px;border-radius:4px}
+
+/* BARS */
+.bar-wrap2{display:flex;align-items:flex-end;gap:4px;height:80px}
+.bar2{flex:1;border-radius:3px 3px 0 0;background:var(--accent);opacity:.8;min-width:8px}
+.bar2:hover{opacity:1}
+.bar-labels{display:flex;gap:4px;margin-top:4px}
+.bar-lbl{flex:1;text-align:center;font-size:9px;color:var(--text3)}
+
+/* NOTIFICATION */
+.notif{position:fixed;bottom:20px;right:20px;background:var(--success);color:#fff;padding:10px 16px;border-radius:var(--r);font-size:12px;z-index:999;display:none;align-items:center;gap:8px}
+.notif.show{display:flex}
+.notif.error{background:var(--danger)}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- SIDEBAR -->
+<div id="sidebar">
+  <div class="logo">
+    <div class="logo-main">JM</div>
+    <div class="logo-sub">Repuestos · v2</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-sec">Principal</div>
+    <div class="ni active" onclick="goTo('dashboard')"><i class="ti ti-dashboard"></i>Dashboard</div>
+    <div class="ni" onclick="goTo('catalogo')"><i class="ti ti-package"></i>Catálogo</div>
+    <div class="nav-sec">Análisis</div>
+    <div class="ni" onclick="goTo('top')"><i class="ti ti-trending-up"></i>Top vendidos</div>
+    <div class="ni" onclick="goTo('alertas')"><i class="ti ti-alert-triangle"></i>Alertas stock<span class="badge-count" id="alerta-count">0</span></div>
+    <div class="nav-sec">Gestión</div>
+    <div class="ni" onclick="goTo('cuentas')"><i class="ti ti-users"></i>Cuentas corrientes</div>
+    <div class="ni" onclick="goTo('ventas')"><i class="ti ti-receipt"></i>Ventas / Remitos</div>
+    <div class="nav-sec">Herramientas</div>
+    <div class="ni" onclick="goTo('admin')"><i class="ti ti-database"></i>Administrar datos</div>
+    <div class="ni" onclick="goTo('importar')"><i class="ti ti-file-import"></i>Importar lista</div>
+    <div class="ni" onclick="goTo('config')"><i class="ti ti-settings"></i>Configuración</div>
+  </nav>
+  <div style="padding:12px 14px;border-top:1px solid var(--border)">
+    <div style="font-size:9px;color:var(--text3)">JM Repuestos · v2.0</div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <div class="topbar">
+    <div class="topbar-title" id="page-title">Dashboard</div>
+    <div class="topbar-right">
+      <div style="position:relative">
+        <i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:14px"></i>
+        <input type="text" placeholder="Buscar artículo, cliente..." style="padding-left:30px;width:250px" oninput="globalSearch(this.value)" id="global-search">
+      </div>
+      <button class="btn" onclick="toggleThemePanel()"><i class="ti ti-palette"></i>Tema</button>
+      <button class="btn primary" onclick="abrirNuevoArticulo()"><i class="ti ti-plus"></i>Nuevo artículo</button>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="mg">
+      <div class="mc"><div class="mc-label">Ventas del mes</div><div class="mc-val" id="dash-ventas">$0</div><div class="mc-sub up"><i class="ti ti-trending-up"></i> este mes</div></div>
+      <div class="mc"><div class="mc-label">Artículos en stock</div><div class="mc-val" id="dash-articulos">0</div><div class="mc-sub down" id="dash-criticos"></div></div>
+      <div class="mc"><div class="mc-label">Clientes activos</div><div class="mc-val" id="dash-clientes">0</div><div class="mc-sub"></div></div>
+      <div class="mc"><div class="mc-label">Deuda clientes</div><div class="mc-val" id="dash-deuda">$0</div><div class="mc-sub down" id="dash-vencidas"></div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px">
+      <div class="card">
+        <div class="card-title">Ventas últimos 6 meses</div>
+        <div class="bar-wrap2" id="dash-bars"></div>
+        <div class="bar-labels" id="dash-labels"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Stock crítico</div>
+        <div id="dash-stock-critico"><div style="color:var(--text3);font-size:11px">Sin alertas</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Últimas ventas</div>
+      <table><thead><tr><th>#</th><th>Cliente</th><th>Total</th><th>Tipo</th><th>Estado</th></tr></thead>
+      <tbody id="dash-ventas-tabla"></tbody></table>
+    </div>
+  </div>
+
+  <!-- CATÁLOGO -->
+  <div class="page" id="page-catalogo">
+    <div class="cascada">
+      <div class="fg"><label>Rubro</label>
+        <select id="f-rubro" onchange="cascadaMarca()">
+          <option value="">— Todos —</option>
+          <option>Amortiguadores</option><option>Frenos - Pastillas</option><option>Frenos - Discos</option>
+          <option>Rótulas y bujes</option><option>Filtros</option><option>Correas</option>
+          <option>Electricidad</option><option>Accesorios</option><option>Cosmética</option>
+        </select>
+      </div>
+      <div class="sep">›</div>
+      <div class="fg"><label>Marca vehículo</label>
+        <select id="f-marca" onchange="cascadaModelo()">
+          <option value="">— Todas —</option>
+          <option>Chevrolet</option><option>Ford</option><option>Volkswagen</option>
+          <option>Renault</option><option>Toyota</option><option>Fiat</option><option>Honda</option>
+        </select>
+      </div>
+      <div class="sep">›</div>
+      <div class="fg"><label>Modelo</label><select id="f-modelo" onchange="aplicarFiltros()"><option value="">— Todos —</option></select></div>
+      <div class="sep">›</div>
+      <div class="fg"><label>Año</label><select id="f-anio" onchange="aplicarFiltros()"><option value="">— Todos —</option></select></div>
+      <div class="fg" style="max-width:160px"><label>Palabra clave</label>
+        <input type="text" id="f-keyword" placeholder="código o nombre" oninput="aplicarFiltros()">
+      </div>
+      <button class="btn sm" onclick="limpiarFiltros()"><i class="ti ti-x"></i>Limpiar</button>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text3)" id="cat-count"></div>
+      <button class="btn sm primary" onclick="abrirNuevoArticulo()"><i class="ti ti-plus"></i>Nuevo artículo</button>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);overflow:hidden">
+      <div class="prod-row header">
+        <div>Código</div><div>Descripción</div><div>Precio</div><div>Stock</div><div>Rubro</div><div>Acciones</div>
+      </div>
+      <div id="cat-body"></div>
+    </div>
+  </div>
+
+  <!-- TOP VENDIDOS -->
+  <div class="page" id="page-top">
+    <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+      <div style="flex:0 0 160px"><label>Rubro</label>
+        <select id="top-rubro" onchange="renderTop()">
+          <option value="">Todos los rubros</option>
+          <option>Amortiguadores</option><option>Frenos - Pastillas</option><option>Rótulas y bujes</option><option>Filtros</option>
+        </select>
+      </div>
+      <div style="flex:0 0 150px"><label>Marca vehículo</label>
+        <select id="top-marca" onchange="renderTop()">
+          <option value="">Todas</option><option>Chevrolet</option><option>Ford</option><option>Volkswagen</option><option>Toyota</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card"><div class="card-title">Top 10 más vendidos</div><div id="top-list"></div></div>
+      <div class="card"><div class="card-title">Artículos sin movimiento (30 días)</div><div id="top-sin-mov" style="font-size:11px;color:var(--text3)">—</div></div>
+    </div>
+  </div>
+
+  <!-- ALERTAS -->
+  <div class="page" id="page-alertas">
+    <div class="mg" style="grid-template-columns:repeat(3,1fr)">
+      <div class="mc"><div class="mc-label">Stock crítico (0-2)</div><div class="mc-val" style="color:var(--danger)" id="count-critico">0</div></div>
+      <div class="mc"><div class="mc-label">Stock bajo (3-5)</div><div class="mc-val" style="color:var(--accent)" id="count-bajo">0</div></div>
+      <div class="mc"><div class="mc-label">Total artículos</div><div class="mc-val" id="count-total">0</div></div>
+    </div>
+    <div class="card"><div class="card-title">Artículos con stock crítico o bajo</div><div id="alertas-list"></div></div>
+  </div>
+
+  <!-- CUENTAS CORRIENTES -->
+  <div class="page" id="page-cuentas">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text3)" id="cc-resumen"></div>
+      <button class="btn primary" onclick="openModal('modal-cliente')"><i class="ti ti-user-plus"></i>Nuevo cliente</button>
+    </div>
+    <div class="card">
+      <table><thead><tr><th>Cliente</th><th>Tel</th><th>Límite cta.</th><th>Saldo</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="cc-tabla"></tbody></table>
+    </div>
+  </div>
+
+  <!-- VENTAS -->
+  <div class="page" id="page-ventas">
+    <div class="tabs-row">
+      <div class="tab active" onclick="setVentaTab(this)">Factura / Ticket</div>
+      <div class="tab" onclick="setVentaTab(this)">Remito</div>
+      <div class="tab" onclick="setVentaTab(this)">Presupuesto</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 300px;gap:14px">
+      <div>
+        <div class="card" style="margin-bottom:10px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+            <div><label>Cliente</label><select id="venta-cliente"><option value="">— Seleccionar —</option></select></div>
+            <div><label>Tipo</label><select id="venta-tipo"><option>Factura B</option><option>Factura A</option><option>Remito</option><option>Presupuesto</option></select></div>
+            <div><label>Fecha</label><input type="date" id="venta-fecha"></div>
+          </div>
+          <div style="background:var(--bg3);border-radius:var(--r);padding:10px;margin-bottom:10px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+            <div style="font-size:9px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;width:100%">Agregar artículo</div>
+            <div style="flex:1;min-width:200px"><label>Buscar</label><input type="text" id="venta-search" placeholder="Código o nombre..." oninput="buscarArticuloVenta()"></div>
+            <div style="flex:0 0 70px"><label>Cantidad</label><input type="number" id="venta-cant" value="1" min="1" style="width:70px"></div>
+            <button class="btn sm primary" onclick="agregarItemVenta()"><i class="ti ti-plus"></i>Agregar</button>
+          </div>
+          <div id="venta-search-results" style="margin-bottom:8px;display:none;background:var(--bg3);border-radius:var(--r);border:1px solid var(--border);max-height:150px;overflow-y:auto"></div>
+          <table><thead><tr><th>Código</th><th>Descripción</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th></th></tr></thead>
+          <tbody id="venta-items"></tbody></table>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <div class="card-title">Resumen</div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px"><span style="color:var(--text2)">Subtotal</span><span id="v-subtotal">$0</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:12px"><span style="color:var(--text2)">IVA 21%</span><span id="v-iva">$0</span></div>
+          <div style="display:flex;justify-content:space-between;margin-bottom:14px;font-size:15px;font-weight:700;border-top:1px solid var(--border);padding-top:8px"><span>Total</span><span style="color:var(--accent)" id="v-total">$0</span></div>
+          <div style="margin-bottom:10px"><label>Forma de pago</label>
+            <select id="venta-pago"><option>Efectivo</option><option>Transferencia</option><option>Débito</option><option>Crédito</option><option>Cuenta corriente</option></select>
+          </div>
+          <button class="btn primary" style="width:100%;justify-content:center;margin-bottom:6px" onclick="confirmarVenta()"><i class="ti ti-check"></i>Confirmar venta</button>
+          <button class="btn" style="width:100%;justify-content:center" onclick="imprimirVenta()"><i class="ti ti-printer"></i>Imprimir</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN DATOS -->
+  <div class="page" id="page-admin">
+    <div class="tabs-row">
+      <div class="tab active" onclick="setAdminTab(this,'art')">Artículos</div>
+      <div class="tab" onclick="setAdminTab(this,'cli')">Clientes</div>
+      <div class="tab" onclick="setAdminTab(this,'ven')">Ventas</div>
+    </div>
+    <div id="admin-art">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <input type="text" placeholder="Buscar artículo..." id="admin-search-art" oninput="renderAdminArt()" style="max-width:250px">
+        <button class="btn primary sm" onclick="abrirNuevoArticulo()"><i class="ti ti-plus"></i>Nuevo</button>
+        <button class="btn success sm" onclick="exportarDatos('articulos')"><i class="ti ti-download"></i>Exportar Excel</button>
+        <button class="btn sm" onclick="exportarBackup()"><i class="ti ti-shield-check"></i>Backup completo</button>
+        <button class="btn sm" onclick="document.getElementById('import-backup').click()"><i class="ti ti-upload"></i>Restaurar backup</button>
+        <input type="file" id="import-backup" accept=".json" style="display:none" onchange="importarBackup(this)">
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr><th>Código</th><th>Descripción</th><th>Rubro</th><th>Precio</th><th>Costo</th><th>Stock</th><th>Mín.</th><th>Acciones</th></tr></thead>
+        <tbody id="admin-art-tabla"></tbody></table>
+      </div>
+    </div>
+    <div id="admin-cli" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <input type="text" placeholder="Buscar cliente..." id="admin-search-cli" oninput="renderAdminCli()" style="max-width:250px">
+        <button class="btn primary sm" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuevo cliente</button>
+        <button class="btn success sm" onclick="exportarDatos('clientes')"><i class="ti ti-download"></i>Exportar</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr><th>Nombre</th><th>CUIT/DNI</th><th>Teléfono</th><th>Email</th><th>Límite cta.</th><th>Saldo</th><th>Acciones</th></tr></thead>
+        <tbody id="admin-cli-tabla"></tbody></table>
+      </div>
+    </div>
+    <div id="admin-ven" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <button class="btn success sm" onclick="exportarDatos('ventas')"><i class="ti ti-download"></i>Exportar ventas</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr><th>#</th><th>Cliente</th><th>Tipo</th><th>Total</th><th>Pago</th><th>Fecha</th><th>Estado</th></tr></thead>
+        <tbody id="admin-ven-tabla"></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- IMPORTAR -->
+  <div class="page" id="page-importar">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card">
+        <div class="card-title">Importar lista de proveedor</div>
+        <div style="margin-bottom:10px"><label>Proveedor</label>
+          <select id="imp-proveedor"><option>RSF / Plataforma</option><option>NACAM</option><option>DISTRIB. SUR</option></select>
+        </div>
+        <div style="margin-bottom:10px"><label>Nombre columna código del proveedor en el Excel</label>
+          <input type="text" placeholder="ej: articulo, codigo, sku..." id="imp-col-cod">
+        </div>
+        <div style="margin-bottom:10px"><label>Nombre columna precio</label>
+          <input type="text" placeholder="ej: precio, lista, precio_publico..." id="imp-col-precio">
+        </div>
+        <div style="border:2px dashed var(--border2);border-radius:var(--r2);padding:30px;text-align:center;cursor:pointer" onclick="alert('En producción: seleccioná el archivo Excel del proveedor')">
+          <i class="ti ti-file-spreadsheet" style="font-size:36px;color:var(--text3);display:block;margin-bottom:8px"></i>
+          <div style="font-size:13px;font-weight:500;margin-bottom:4px">Arrastrá el Excel del proveedor</div>
+          <div style="font-size:11px;color:var(--text3)">.xlsx · .xls · .csv</div>
+        </div>
+        <div style="margin-top:12px;background:rgba(64,144,224,.08);border:1px solid rgba(64,144,224,.2);border-radius:var(--r);padding:10px;font-size:11px;color:var(--info)">
+          <i class="ti ti-info-circle"></i> El sistema busca el código del proveedor en la tabla de códigos de cada artículo y actualiza precio/stock automáticamente. Los sin coincidencia se listan para asignación manual.
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Último resultado</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+          <div style="background:rgba(64,176,112,.1);border-radius:var(--r);padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--success)">312</div>
+            <div style="font-size:10px;color:var(--text3)">Actualizados</div>
+          </div>
+          <div style="background:rgba(232,160,32,.1);border-radius:var(--r);padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--accent)">28</div>
+            <div style="font-size:10px;color:var(--text3)">Sin coincidencia</div>
+          </div>
+          <div style="background:rgba(64,144,224,.1);border-radius:var(--r);padding:10px;text-align:center">
+            <div style="font-size:20px;font-weight:700;color:var(--info)">5</div>
+            <div style="font-size:10px;color:var(--text3)">Nuevos</div>
+          </div>
+        </div>
+        <div class="card-title">Sin coincidencia — asignación manual</div>
+        <table><thead><tr><th>Cód. proveedor</th><th>Descripción</th><th>Precio</th><th></th></tr></thead>
+        <tbody>
+          <tr><td><span class="prov-tag">KYB-9337521</span></td><td>AMORT DEL CORSA 1.4</td><td>$19.200</td><td><button class="btn sm info">Asignar</button></td></tr>
+          <tr><td><span class="prov-tag">TRW-JGM4518S</span></td><td>ROTULA INF GOL</td><td>$12.800</td><td><button class="btn sm info">Asignar</button></td></tr>
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIG -->
+  <div class="page" id="page-config">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div class="card">
+        <div class="card-title">Datos del negocio</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div><label>Nombre</label><input id="cfg-nombre" value="JM Repuestos"></div>
+          <div><label>CUIT</label><input id="cfg-cuit" placeholder="20-XXXXXXXX-X"></div>
+          <div><label>Dirección</label><input id="cfg-dir" placeholder="Cruz del Eje, Córdoba"></div>
+          <div><label>Teléfono</label><input id="cfg-tel" placeholder="351-XXXXXXX"></div>
+          <button class="btn primary" style="width:fit-content" onclick="guardarConfig()"><i class="ti ti-device-floppy"></i>Guardar</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Apariencia</div>
+        <div style="margin-bottom:12px">
+          <label>Color de acento</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <div style="width:28px;height:28px;border-radius:50%;background:#e8a020;cursor:pointer;border:2px solid transparent" onclick="setAcc('#e8a020','#c07010',this)"></div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#4090e0;cursor:pointer;border:2px solid transparent" onclick="setAcc('#4090e0','#2060b0',this)"></div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#40b070;cursor:pointer;border:2px solid transparent" onclick="setAcc('#40b070','#288050',this)"></div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#e05050;cursor:pointer;border:2px solid transparent" onclick="setAcc('#e05050','#a03030',this)"></div>
+            <div style="width:28px;height:28px;border-radius:50%;background:#9060e0;cursor:pointer;border:2px solid transparent" onclick="setAcc('#9060e0','#6030b0',this)"></div>
+          </div>
+        </div>
+        <div>
+          <label>Modo</label>
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="btn" onclick="setMode('dark')"><i class="ti ti-moon"></i>Oscuro</button>
+            <button class="btn" onclick="setMode('light')"><i class="ti ti-sun"></i>Claro</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div><!-- /main -->
+</div><!-- /app -->
+
+<!-- MODAL FICHA ARTÍCULO -->
+<div class="modal-bg" id="modal-ficha">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-ficha-title">Nuevo artículo</div>
+      <button class="btn" onclick="closeModal('modal-ficha')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ficha-id">
+      <div class="section-title">Identificación</div>
+      <div class="ficha-grid">
+        <div class="fg-item"><label>Código JM (interno)</label><input id="ficha-cod" placeholder="AMO-0442"></div>
+        <div class="fg-item"><label>Rubro</label>
+          <select id="ficha-rubro" onchange="updateMedidas()">
+            <option value="">— Seleccionar —</option>
+            <option>Amortiguadores</option><option>Frenos - Pastillas</option><option>Frenos - Discos</option>
+            <option>Rótulas y bujes</option><option>Filtros</option><option>Correas</option>
+            <option>Electricidad</option><option>Accesorios</option><option>Cosmética</option>
+          </select>
+        </div>
+        <div class="fg-item"><label>Posición</label>
+          <select id="ficha-pos"><option value="">—</option><option>Delantero</option><option>Trasero</option><option>Universal</option></select>
+        </div>
+        <div class="fg-item"><label>Descripción completa</label><input id="ficha-desc" placeholder="Amortiguador delantero KYB Corsa Classic"></div>
+        <div class="fg-item"><label>Marca del artículo</label><input id="ficha-marca-art" placeholder="KYB, TRW, Monroe..."></div>
+        <div class="fg-item"><label>Lado</label>
+          <select id="ficha-lado"><option value="">—</option><option>Derecho</option><option>Izquierdo</option><option>Ambos</option><option>N/A</option></select>
+        </div>
+      </div>
+      <div class="ficha-grid half">
+        <div class="fg-item"><label>Precio de venta</label><input type="number" id="ficha-precio" placeholder="0"></div>
+        <div class="fg-item"><label>Precio de costo</label><input type="number" id="ficha-costo" placeholder="0"></div>
+        <div class="fg-item"><label>Stock actual</label><input type="number" id="ficha-stock" placeholder="0"></div>
+        <div class="fg-item"><label>Stock mínimo (alerta)</label><input type="number" id="ficha-stockmin" placeholder="3"></div>
+      </div>
+      <div class="fg-item" style="margin-bottom:10px"><label>Observaciones</label>
+        <textarea id="ficha-obs" rows="2" placeholder="MAS DUREZA (CARGA), par de torque 45Nm..."></textarea>
+      </div>
+
+      <div class="section-title">Medidas <span style="color:var(--text3);font-weight:400;font-size:9px" id="medidas-tipo-label"></span></div>
+      <div class="medidas-grid" id="medidas-container">
+        <div style="font-size:11px;color:var(--text3);grid-column:1/-1">Seleccioná un rubro para ver las medidas correspondientes</div>
+      </div>
+
+      <div class="section-title">Aplicaciones (vehículos compatibles)</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="app-table">
+          <thead><tr><th>Marca</th><th>Modelo</th><th>Año desde</th><th>Año hasta</th><th>Cilindrada</th><th>Motor</th><th>Observación</th><th></th></tr></thead>
+          <tbody id="apps-tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn sm" onclick="addAppRow()"><i class="ti ti-plus"></i>Agregar aplicación</button>
+
+      <div class="section-title">Códigos de proveedor y números originales</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="app-table">
+          <thead><tr><th>Tipo</th><th>Proveedor / Marca</th><th>Código</th><th>Notas</th><th></th></tr></thead>
+          <tbody id="prov-tbody"></tbody>
+        </table>
+      </div>
+      <button class="btn sm" onclick="addProvRow()"><i class="ti ti-plus"></i>Agregar código</button>
+
+      <div class="section-title">Equivalencias y sustitutos</div>
+      <div style="margin-bottom:10px">
+        <span class="etab active" onclick="setEquivTab(this,'equiv')"><i class="ti ti-equal"></i>Equivalencias exactas</span>
+        <span class="etab sust" onclick="setEquivTab(this,'sust')"><i class="ti ti-arrows-exchange"></i>Posibles sustitutos</span>
+      </div>
+      <div id="equiv-panel">
+        <div style="font-size:10px;color:var(--info);margin-bottom:8px;padding:6px 10px;background:rgba(64,144,224,.08);border-radius:var(--r)"><i class="ti ti-info-circle"></i> Reemplazos directos — comparten medidas automáticamente.</div>
+        <table class="app-table"><thead><tr><th>Código JM</th><th>Marca</th><th>Descripción</th><th>Medidas</th><th></th></tr></thead>
+        <tbody id="equiv-tbody"><tr><td><input placeholder="AMO-0443" style="min-width:90px"></td><td><input placeholder="Monroe" style="min-width:70px"></td><td><input placeholder="Descripción" style="min-width:120px"></td><td><span style="font-size:10px;color:var(--success)"><i class="ti ti-check"></i>Automático</span></td><td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td></tr></tbody></table>
+      </div>
+      <div id="sust-panel" style="display:none">
+        <div style="font-size:10px;color:var(--danger);margin-bottom:8px;padding:6px 10px;background:rgba(224,80,80,.08);border-radius:var(--r)"><i class="ti ti-alert-triangle"></i> No son reemplazos exactos — el sistema mostrará advertencia al consultar.</div>
+        <table class="app-table"><thead><tr><th>Código JM</th><th>Marca</th><th>Motivo</th><th>Diferencia</th><th></th></tr></thead>
+        <tbody id="sust-tbody"><tr><td><input placeholder="AMO-0450" style="min-width:90px"></td><td><input placeholder="Sachs" style="min-width:70px"></td><td><input placeholder="Similar función, distinto tope" style="min-width:120px"></td><td><input placeholder="Carrera +5mm" style="min-width:80px"></td><td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td></tr></tbody></table>
+      </div>
+
+      <div class="section-title">Historial de precios</div>
+      <div id="hist-precios-ficha"><div style="font-size:11px;color:var(--text3)">Sin historial aún</div></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <button class="btn danger sm" id="btn-eliminar-art" onclick="eliminarArticulo()" style="display:none"><i class="ti ti-trash"></i>Eliminar</button>
+        <button class="btn" onclick="closeModal('modal-ficha')">Cancelar</button>
+        <button class="btn primary" onclick="guardarArticulo()"><i class="ti ti-device-floppy"></i>Guardar artículo</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENTE -->
+<div class="modal-bg" id="modal-cliente">
+  <div class="modal" style="width:600px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-cli-title">Nuevo cliente</div>
+      <button class="btn" onclick="closeModal('modal-cliente')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cli-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+        <div class="fg-item"><label>Nombre / Razón social</label><input id="cli-nombre"></div>
+        <div class="fg-item"><label>CUIT / DNI</label><input id="cli-cuit"></div>
+        <div class="fg-item"><label>Teléfono</label><input id="cli-tel"></div>
+        <div class="fg-item"><label>Email</label><input type="email" id="cli-email"></div>
+        <div class="fg-item"><label>Dirección</label><input id="cli-dir"></div>
+        <div class="fg-item"><label>Condición IVA</label>
+          <select id="cli-iva"><option>Consumidor final</option><option>Responsable inscripto</option><option>Monotributista</option></select>
+        </div>
+        <div class="fg-item"><label>Límite cuenta corriente ($)</label><input type="number" id="cli-limite" placeholder="0"></div>
+        <div class="fg-item"><label>Saldo actual ($)</label><input type="number" id="cli-saldo" placeholder="0"></div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px">
+        <button class="btn danger sm" id="btn-eliminar-cli" onclick="eliminarCliente()" style="display:none"><i class="ti ti-trash"></i>Eliminar</button>
+        <button class="btn" onclick="closeModal('modal-cliente')">Cancelar</button>
+        <button class="btn primary" onclick="guardarCliente()"><i class="ti ti-device-floppy"></i>Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- THEME PANEL -->
+<div id="theme-panel" style="display:none;position:fixed;top:54px;right:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:14px;width:190px;z-index:300">
+  <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Acento</div>
+  <div style="display:flex;gap:6px;margin-bottom:10px">
+    <div style="width:26px;height:26px;border-radius:50%;background:#e8a020;cursor:pointer" onclick="setAcc('#e8a020','#c07010',this)"></div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#4090e0;cursor:pointer" onclick="setAcc('#4090e0','#2060b0',this)"></div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#40b070;cursor:pointer" onclick="setAcc('#40b070','#288050',this)"></div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#e05050;cursor:pointer" onclick="setAcc('#e05050','#a03030',this)"></div>
+    <div style="width:26px;height:26px;border-radius:50%;background:#9060e0;cursor:pointer" onclick="setAcc('#9060e0','#6030b0',this)"></div>
+  </div>
+  <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Modo</div>
+  <div style="display:flex;gap:6px">
+    <button class="btn sm" onclick="setMode('dark')"><i class="ti ti-moon"></i>Oscuro</button>
+    <button class="btn sm" onclick="setMode('light')"><i class="ti ti-sun"></i>Claro</button>
+  </div>
+</div>
+
+<!-- NOTIFICACIÓN -->
+<div class="notif" id="notif"><i class="ti ti-check"></i><span id="notif-msg"></span></div>
+
+<script>
+// ══════════════════════════════════════════
+// ALMACENAMIENTO LOCAL (localStorage)
+// ══════════════════════════════════════════
+const DB = {
+  get: k => { try { return JSON.parse(localStorage.getItem('jmr_'+k)||'null'); } catch{ return null; } },
+  set: (k,v) => localStorage.setItem('jmr_'+k, JSON.stringify(v)),
+  del: k => localStorage.removeItem('jmr_'+k)
+};
+
+// DATOS INICIALES
+function initData(){
+  if(!DB.get('articulos')) DB.set('articulos', [
+    {id:1,cod:'AMO-0441',desc:'Amortiguador del. KYB Chevrolet Corsa',rubro:'Amortiguadores',marcaArt:'KYB',pos:'Delantero',lado:'Ambos',precio:18200,costo:10000,stock:1,stockMin:3,obs:'',medidas:{},aplicaciones:[{marca:'Chevrolet',modelo:'Corsa',anioD:'2002',anioH:'2012',cil:'1.4',motor:'',obs:''},{marca:'Chevrolet',modelo:'Classic',anioD:'2010',anioH:'2020',cil:'1.4',motor:'F14D3',obs:'MAS DUREZA (CARGA)'}],codigos:[{tipo:'ORIGINAL OEM',proveedor:'KYB',codigo:'333831',notas:''},{tipo:'Código proveedor',proveedor:'RSF',codigo:'KYB-333831',notas:''}],histPrecios:[{fecha:'2026-04-01',precio:15050,proveedor:'RSF'},{fecha:'2026-05-02',precio:16250,proveedor:'NACAM'},{fecha:'2026-05-18',precio:18200,proveedor:'RSF'}]},
+    {id:2,cod:'FRE-0241',desc:'Pastillas freno del. Ford Focus 2008-2018',rubro:'Frenos - Pastillas',marcaArt:'TRW',pos:'Delantero',lado:'Ambos',precio:8400,costo:4200,stock:3,stockMin:5,obs:'',medidas:{},aplicaciones:[{marca:'Ford',modelo:'Focus',anioD:'2008',anioH:'2018',cil:'1.6/2.0',motor:'',obs:''}],codigos:[{tipo:'ORIGINAL OEM',proveedor:'FORD',codigo:'1234567',notas:''},{tipo:'Código proveedor',proveedor:'RSF',codigo:'TRW-1234',notas:''}],histPrecios:[{fecha:'2026-05-01',precio:7800,proveedor:'RSF'},{fecha:'2026-05-18',precio:8400,proveedor:'RSF'}]},
+    {id:3,cod:'FIL-0088',desc:'Filtro de aceite Toyota Hilux/SW4',rubro:'Filtros',marcaArt:'Purolator',pos:'Universal',lado:'N/A',precio:2000,costo:900,stock:2,stockMin:5,obs:'',medidas:{},aplicaciones:[{marca:'Toyota',modelo:'Hilux',anioD:'2005',anioH:'2023',cil:'2.4/2.8',motor:'',obs:''},{marca:'Toyota',modelo:'SW4',anioD:'2006',anioH:'2023',cil:'2.8',motor:'',obs:''}],codigos:[{tipo:'Código proveedor',proveedor:'RSF',codigo:'PUR-0088',notas:''}],histPrecios:[{fecha:'2026-05-18',precio:2000,proveedor:'RSF'}]},
+    {id:4,cod:'ROT-0088',desc:'Rótula inferior VW Golf/Suran/Vento',rubro:'Rótulas y bujes',marcaArt:'Spicer',pos:'Delantero',lado:'Derecho',precio:12800,costo:6500,stock:8,stockMin:3,obs:'',medidas:{},aplicaciones:[{marca:'Volkswagen',modelo:'Golf',anioD:'2008',anioH:'2020',cil:'1.4/1.6',motor:'',obs:''},{marca:'Volkswagen',modelo:'Suran',anioD:'2006',anioH:'2022',cil:'1.6',motor:'',obs:''}],codigos:[{tipo:'Código proveedor',proveedor:'RSF',codigo:'SPC-ROT88',notas:''}],histPrecios:[{fecha:'2026-05-18',precio:12800,proveedor:'RSF'}]},
+    {id:5,cod:'ACC-0320',desc:'Funda volante cuero universal',rubro:'Accesorios',marcaArt:'',pos:'Universal',lado:'N/A',precio:4800,costo:2000,stock:12,stockMin:3,obs:'',medidas:{},aplicaciones:[],codigos:[],histPrecios:[]},
+    {id:6,cod:'COS-0077',desc:'Cera polish profesional 500ml',rubro:'Cosmética',marcaArt:'',pos:'Universal',lado:'N/A',precio:3200,costo:1400,stock:9,stockMin:4,obs:'',medidas:{},aplicaciones:[],codigos:[],histPrecios:[]},
+  ]);
+  if(!DB.get('clientes')) DB.set('clientes',[
+    {id:1,nombre:'Taller El Rápido',cuit:'30-12345678-9',tel:'351-4521100',email:'rapido@email.com',dir:'Av. Sur 1234',iva:'Responsable inscripto',limite:50000,saldo:0},
+    {id:2,nombre:'Juan Pérez',cuit:'20-22334455-6',tel:'351-5523300',email:'',dir:'',iva:'Consumidor final',limite:80000,saldo:-38800},
+    {id:3,nombre:'Garage Sur',cuit:'30-99887766-5',tel:'351-7712200',email:'garage@email.com',dir:'',iva:'Responsable inscripto',limite:200000,saldo:-187500},
+  ]);
+  if(!DB.get('ventas')) DB.set('ventas',[
+    {id:1,cliente:'Taller El Rápido',tipo:'Factura B',total:12400,pago:'Efectivo',fecha:'2026-05-18',estado:'Cobrado',items:[]},
+    {id:2,cliente:'Juan Pérez',tipo:'Remito',total:38800,pago:'Cuenta corriente',fecha:'2026-05-18',estado:'Cta. cte.',items:[]},
+  ]);
+  if(!DB.get('nextId')) DB.set('nextId',100);
+}
+
+function nextId(){ const n=DB.get('nextId')||100; DB.set('nextId',n+1); return n; }
+
+// ══════════════════════════════════════════
+// NAVEGACIÓN
+// ══════════════════════════════════════════
+const pageTitles={dashboard:'Dashboard',catalogo:'Catálogo de artículos',top:'Top vendidos',alertas:'Alertas de stock',cuentas:'Cuentas corrientes',ventas:'Ventas y remitos',admin:'Administrar datos',importar:'Importar lista proveedor',config:'Configuración'};
+
+function goTo(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.getElementById('page-title').textContent=pageTitles[id]||id;
+  document.querySelectorAll('.ni').forEach(n=>{ if(n.getAttribute('onclick')&&n.getAttribute('onclick').includes("'"+id+"'")) n.classList.add('active'); });
+  document.getElementById('theme-panel').style.display='none';
+  const renders={dashboard:renderDashboard,catalogo:renderCatalogo,top:renderTop,alertas:renderAlertas,cuentas:renderCuentas,admin:renderAdminArt,ventas:initVentas};
+  if(renders[id]) renders[id]();
+}
+
+// ══════════════════════════════════════════
+// MODALS
+// ══════════════════════════════════════════
+function openModal(id){document.getElementById(id).classList.add('open')}
+function closeModal(id){document.getElementById(id).classList.remove('open')}
+document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open')}));
+
+// ══════════════════════════════════════════
+// NOTIFICACIONES
+// ══════════════════════════════════════════
+function notif(msg,tipo='ok'){
+  const el=document.getElementById('notif');
+  el.className='notif show'+(tipo==='error'?' error':'');
+  document.getElementById('notif-msg').textContent=msg;
+  el.querySelector('i').className='ti ti-'+(tipo==='error'?'x':'check');
+  setTimeout(()=>el.classList.remove('show'),3000);
+}
+
+// ══════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════
+function renderDashboard(){
+  const arts=DB.get('articulos')||[];
+  const clis=DB.get('clientes')||[];
+  const vents=DB.get('ventas')||[];
+  document.getElementById('dash-articulos').textContent=arts.length;
+  document.getElementById('dash-clientes').textContent=clis.length;
+  const deuda=clis.reduce((a,c)=>a+(c.saldo<0?Math.abs(c.saldo):0),0);
+  document.getElementById('dash-deuda').textContent='$'+deuda.toLocaleString('es-AR');
+  const criticos=arts.filter(a=>a.stock<=a.stockMin);
+  document.getElementById('dash-criticos').textContent=criticos.length+' con stock bajo';
+  document.getElementById('dash-articulos').style.color=criticos.length>0?'var(--accent)':'var(--text)';
+  const totalVentas=vents.reduce((a,v)=>a+v.total,0);
+  document.getElementById('dash-ventas').textContent='$'+totalVentas.toLocaleString('es-AR');
+  // bars
+  const vals=[420,380,510,640,580,Math.round(totalVentas/1000)||847];
+  const months=['Dic','Ene','Feb','Mar','Abr','May'];
+  const max=Math.max(...vals);
+  const bc=document.getElementById('dash-bars'),bl=document.getElementById('dash-labels');
+  bc.innerHTML='';bl.innerHTML='';
+  vals.forEach((v,i)=>{bc.innerHTML+=`<div class="bar2" style="height:${Math.round(v/max*75)}px" title="${months[i]}: $${v}K"></div>`;bl.innerHTML+=`<div class="bar-lbl">${months[i]}</div>`});
+  // stock critico
+  const sc=document.getElementById('dash-stock-critico');
+  const crit=arts.filter(a=>a.stock<=a.stockMin).slice(0,4);
+  sc.innerHTML=crit.length?crit.map(a=>`<div class="alerta-row ${a.stock>0?'med':''}" style="margin-bottom:6px;padding:8px 10px"><div style="flex:1"><div style="font-size:11px;font-weight:500">${a.desc.substring(0,30)}...</div><div style="font-size:10px;color:var(--text3)">${a.cod} · Stock: <strong>${a.stock}</strong></div></div><span class="badge ${a.stock===0?'b-low':'b-med'}">${a.stock===0?'Sin stock':'Bajo'}</span></div>`).join(''):'<div style="color:var(--text3);font-size:11px">Sin alertas ✓</div>';
+  // ventas tabla
+  const vt=document.getElementById('dash-ventas-tabla');
+  vt.innerHTML=vents.slice(-5).reverse().map((v,i)=>`<tr><td>#${String(v.id).padStart(4,'0')}</td><td>${v.cliente}</td><td>$${v.total.toLocaleString('es-AR')}</td><td><span class="badge b-gray">${v.tipo}</span></td><td><span class="badge ${v.estado==='Cobrado'?'b-ok':v.estado==='Cta. cte.'?'b-med':'b-low'}">${v.estado}</span></td></tr>`).join('');
+  updateAlertaCount();
+}
+
+function updateAlertaCount(){
+  const arts=DB.get('articulos')||[];
+  const c=arts.filter(a=>a.stock<=a.stockMin).length;
+  document.getElementById('alerta-count').textContent=c;
+}
+
+// ══════════════════════════════════════════
+// CATÁLOGO
+// ══════════════════════════════════════════
+let filtrados=[];
+const modelosPorMarca={Chevrolet:['Corsa','Classic','Agile','Cruze','Onix','Celta'],Ford:['Focus','Fiesta','EcoSport','Ranger','Ka'],Volkswagen:['Golf','Gol','Suran','Vento','Amarok','Polo'],Renault:['Logan','Sandero','Duster','Clio','Megane'],Toyota:['Hilux','SW4','Etios','Corolla','Yaris'],Fiat:['Palio','Punto','Uno','Strada','Cronos'],Honda:['Civic','Fit','HR-V','City']};
+
+function cascadaMarca(){
+  const marca=document.getElementById('f-marca').value;
+  const sel=document.getElementById('f-modelo');
+  sel.innerHTML='<option value="">— Todos —</option>';
+  if(marca&&modelosPorMarca[marca]) modelosPorMarca[marca].forEach(m=>sel.innerHTML+=`<option>${m}</option>`);
+  cascadaAnio();
+}
+function cascadaAnio(){
+  const anio=document.getElementById('f-anio');
+  anio.innerHTML='<option value="">— Todos —</option>';
+  for(let y=2026;y>=1990;y--) anio.innerHTML+=`<option>${y}</option>`;
+  aplicarFiltros();
+}
+function aplicarFiltros(){
+  const rubro=document.getElementById('f-rubro').value;
+  const marca=document.getElementById('f-marca').value;
+  const modelo=document.getElementById('f-modelo').value;
+  const anio=document.getElementById('f-anio').value;
+  const kw=(document.getElementById('f-keyword').value||'').toLowerCase();
+  const arts=DB.get('articulos')||[];
+  filtrados=arts.filter(p=>{
+    if(rubro&&p.rubro!==rubro) return false;
+    if(marca){
+      const apps=p.aplicaciones||[];
+      if(!apps.some(a=>a.marca===marca&&(!modelo||a.modelo===modelo)&&(!anio||( parseInt(anio)>=parseInt(a.anioD||0)&&parseInt(anio)<=parseInt(a.anioH||9999) )))) return false;
+    }
+    if(kw&&!p.desc.toLowerCase().includes(kw)&&!p.cod.toLowerCase().includes(kw)) return false;
+    return true;
+  });
+  renderCatalogo();
+}
+function limpiarFiltros(){
+  ['f-rubro','f-marca','f-modelo','f-anio'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('f-keyword').value='';
+  document.getElementById('f-modelo').innerHTML='<option value="">— Todos —</option>';
+  document.getElementById('f-anio').innerHTML='<option value="">— Todos —</option>';
+  filtrados=DB.get('articulos')||[];
+  renderCatalogo();
+}
+function renderCatalogo(){
+  filtrados=filtrados.length>0||document.getElementById('f-keyword').value?filtrados:DB.get('articulos')||[];
+  if(!document.getElementById('cat-body')) return;
+  const body=document.getElementById('cat-body');
+  body.innerHTML='';
+  filtrados.forEach(p=>{
+    const sc=p.stock===0?'b-low':p.stock<=p.stockMin?'b-low':p.stock<=p.stockMin*1.5?'b-med':'b-ok';
+    const sl=p.stock===0?'Sin stock':p.stock<=p.stockMin?'Stock bajo':'En stock';
+    const apps=(p.aplicaciones||[]).slice(0,2).map(a=>a.marca+' '+a.modelo).join(', ');
+    body.innerHTML+=`<div class="prod-row" onclick="editarArticulo(${p.id})">
+      <div style="color:var(--info);font-size:11px">${p.cod}</div>
+      <div style="flex-direction:column;align-items:flex-start"><div style="font-size:12px;color:var(--text)">${p.desc}</div><div style="font-size:10px;color:var(--text3)">${apps}</div></div>
+      <div style="font-weight:600;color:var(--accent)">$${(p.precio||0).toLocaleString('es-AR')}</div>
+      <div><span class="badge ${sc}">${p.stock} u.</span></div>
+      <div style="font-size:10px;color:var(--text3)">${p.rubro}</div>
+      <div><button class="btn sm" onclick="event.stopPropagation();editarArticulo(${p.id})"><i class="ti ti-edit"></i></button></div>
+    </div>`;
+  });
+  document.getElementById('cat-count').textContent=`Mostrando ${filtrados.length} artículos`;
+  filtrados=DB.get('articulos')||[]; // reset
+}
+function globalSearch(v){
+  const kw=v.toLowerCase();
+  const arts=DB.get('articulos')||[];
+  filtrados=arts.filter(p=>p.desc.toLowerCase().includes(kw)||p.cod.toLowerCase().includes(kw)||( p.codigos||[]).some(c=>c.codigo.toLowerCase().includes(kw)));
+  if(document.getElementById('page-catalogo').classList.contains('active')) renderCatalogo();
+}
+
+// ══════════════════════════════════════════
+// ARTÍCULO — CRUD
+// ══════════════════════════════════════════
+const medidasPorRubro={
+  'Amortiguadores':[{l:'Longitud abierta',u:'mm'},{l:'Longitud cerrada',u:'mm'},{l:'Carrera',u:'mm'},{l:'Anclaie superior',u:''},{l:'Anclaie inferior',u:''},{l:'Tope/Fuelle',u:''}],
+  'Frenos - Pastillas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Espesor',u:'mm'},{l:'Diámetro disco compatible',u:'mm'}],
+  'Frenos - Discos':[{l:'Diámetro exterior',u:'mm'},{l:'Diámetro interior',u:'mm'},{l:'Espesor nuevo',u:'mm'},{l:'Espesor mínimo',u:'mm'},{l:'N° orificios',u:''}],
+  'Rótulas y bujes':[{l:'Diámetro vástago',u:'mm'},{l:'Paso de rosca',u:''},{l:'Largo total',u:'mm'},{l:'Ángulo',u:'°'}],
+  'Filtros':[{l:'Diámetro exterior',u:'mm'},{l:'Alto',u:'mm'},{l:'Rosca interior',u:''},{l:'Presión bypass',u:'bar'}],
+  'Correas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Perfil',u:''},{l:'N° dientes',u:''}],
+};
+
+function updateMedidas(){
+  const rubro=document.getElementById('ficha-rubro').value;
+  const cont=document.getElementById('medidas-container');
+  const lbl=document.getElementById('medidas-tipo-label');
+  const fields=medidasPorRubro[rubro];
+  if(!fields){cont.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">No aplica medidas estándar para este rubro</div>';lbl.textContent='';return;}
+  lbl.textContent='· '+rubro;
+  cont.innerHTML=fields.map(f=>`<div class="med-item"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-medida="${f.l}" placeholder="${f.u}"></div>`).join('');
+}
+
+function abrirNuevoArticulo(){
+  document.getElementById('modal-ficha-title').textContent='Nuevo artículo';
+  document.getElementById('ficha-id').value='';
+  ['ficha-cod','ficha-desc','ficha-marca-art','ficha-obs'].forEach(id=>document.getElementById(id).value='');
+  ['ficha-precio','ficha-costo','ficha-stock','ficha-stockmin'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('ficha-rubro').value='';
+  document.getElementById('ficha-pos').value='';
+  document.getElementById('ficha-lado').value='';
+  document.getElementById('apps-tbody').innerHTML='';
+  document.getElementById('prov-tbody').innerHTML='';
+  document.getElementById('equiv-tbody').innerHTML='';
+  document.getElementById('sust-tbody').innerHTML='';
+  document.getElementById('hist-precios-ficha').innerHTML='<div style="font-size:11px;color:var(--text3)">Sin historial aún</div>';
+  document.getElementById('btn-eliminar-art').style.display='none';
+  updateMedidas();
+  addAppRow(); addProvRow();
+  openModal('modal-ficha');
+}
+
+function editarArticulo(id){
+  const arts=DB.get('articulos')||[];
+  const a=arts.find(x=>x.id===id);
+  if(!a) return;
+  document.getElementById('modal-ficha-title').textContent='Editar artículo';
+  document.getElementById('ficha-id').value=id;
+  document.getElementById('ficha-cod').value=a.cod||'';
+  document.getElementById('ficha-desc').value=a.desc||'';
+  document.getElementById('ficha-rubro').value=a.rubro||'';
+  document.getElementById('ficha-pos').value=a.pos||'';
+  document.getElementById('ficha-lado').value=a.lado||'';
+  document.getElementById('ficha-marca-art').value=a.marcaArt||'';
+  document.getElementById('ficha-precio').value=a.precio||'';
+  document.getElementById('ficha-costo').value=a.costo||'';
+  document.getElementById('ficha-stock').value=a.stock||'';
+  document.getElementById('ficha-stockmin').value=a.stockMin||'';
+  document.getElementById('ficha-obs').value=a.obs||'';
+  updateMedidas();
+  // medidas
+  if(a.medidas){ Object.entries(a.medidas).forEach(([k,v])=>{ const inp=document.querySelector(`[data-medida="${k}"]`); if(inp) inp.value=v; }); }
+  // aplicaciones
+  document.getElementById('apps-tbody').innerHTML='';
+  (a.aplicaciones||[]).forEach(ap=>addAppRow(ap));
+  if(!(a.aplicaciones||[]).length) addAppRow();
+  // codigos
+  document.getElementById('prov-tbody').innerHTML='';
+  (a.codigos||[]).forEach(c=>addProvRow(c));
+  if(!(a.codigos||[]).length) addProvRow();
+  // historial
+  const hist=a.histPrecios||[];
+  document.getElementById('hist-precios-ficha').innerHTML=hist.length?hist.slice().reverse().map(h=>`<div class="hist-row"><span class="hist-date">${h.fecha}</span><span style="font-weight:600">$${(h.precio||0).toLocaleString('es-AR')}</span><span style="color:var(--info);font-size:10px;margin-left:8px">${h.proveedor||''}</span></div>`).join(''):'<div style="font-size:11px;color:var(--text3)">Sin historial</div>';
+  document.getElementById('btn-eliminar-art').style.display='inline-flex';
+  openModal('modal-ficha');
+}
+
+function guardarArticulo(){
+  const cod=document.getElementById('ficha-cod').value.trim();
+  const desc=document.getElementById('ficha-desc').value.trim();
+  if(!cod||!desc){notif('Código y descripción son requeridos','error');return;}
+  const arts=DB.get('articulos')||[];
+  const idExist=parseInt(document.getElementById('ficha-id').value)||null;
+  // medidas
+  const medidas={};
+  document.querySelectorAll('#medidas-container [data-medida]').forEach(inp=>{ if(inp.value) medidas[inp.getAttribute('data-medida')]=inp.value; });
+  // aplicaciones
+  const aplicaciones=[];
+  document.querySelectorAll('#apps-tbody tr').forEach(tr=>{
+    const ins=tr.querySelectorAll('input');
+    if(ins[0]&&ins[0].value) aplicaciones.push({marca:ins[0].value,modelo:ins[1]?.value||'',anioD:ins[2]?.value||'',anioH:ins[3]?.value||'',cil:ins[4]?.value||'',motor:ins[5]?.value||'',obs:ins[6]?.value||''});
+  });
+  // codigos
+  const codigos=[];
+  document.querySelectorAll('#prov-tbody tr').forEach(tr=>{
+    const sel=tr.querySelector('select');
+    const ins=tr.querySelectorAll('input');
+    if(ins[0]&&ins[0].value) codigos.push({tipo:sel?.value||'',proveedor:ins[0].value,codigo:ins[1]?.value||'',notas:ins[2]?.value||''});
+  });
+  const precio=parseFloat(document.getElementById('ficha-precio').value)||0;
+  if(idExist){
+    const idx=arts.findIndex(x=>x.id===idExist);
+    const prev=arts[idx];
+    const hist=prev.histPrecios||[];
+    if(precio!==prev.precio) hist.push({fecha:new Date().toISOString().split('T')[0],precio,proveedor:'Manual'});
+    arts[idx]={...prev,cod,desc,rubro:document.getElementById('ficha-rubro').value,pos:document.getElementById('ficha-pos').value,lado:document.getElementById('ficha-lado').value,marcaArt:document.getElementById('ficha-marca-art').value,precio,costo:parseFloat(document.getElementById('ficha-costo').value)||0,stock:parseInt(document.getElementById('ficha-stock').value)||0,stockMin:parseInt(document.getElementById('ficha-stockmin').value)||0,obs:document.getElementById('ficha-obs').value,medidas,aplicaciones,codigos,histPrecios:hist};
+  } else {
+    arts.push({id:nextId(),cod,desc,rubro:document.getElementById('ficha-rubro').value,pos:document.getElementById('ficha-pos').value,lado:document.getElementById('ficha-lado').value,marcaArt:document.getElementById('ficha-marca-art').value,precio,costo:parseFloat(document.getElementById('ficha-costo').value)||0,stock:parseInt(document.getElementById('ficha-stock').value)||0,stockMin:parseInt(document.getElementById('ficha-stockmin').value)||0,obs:document.getElementById('ficha-obs').value,medidas,aplicaciones,codigos,histPrecios:precio?[{fecha:new Date().toISOString().split('T')[0],precio,proveedor:'Manual'}]:[]});
+  }
+  DB.set('articulos',arts);
+  closeModal('modal-ficha');
+  notif(idExist?'Artículo actualizado':'Artículo agregado');
+  renderCatalogo(); updateAlertaCount();
+}
+
+function eliminarArticulo(){
+  if(!confirm('¿Eliminár este artículo?')) return;
+  const id=parseInt(document.getElementById('ficha-id').value);
+  DB.set('articulos',(DB.get('articulos')||[]).filter(a=>a.id!==id));
+  closeModal('modal-ficha');
+  notif('Artículo eliminado');
+  renderCatalogo(); updateAlertaCount();
+}
+
+function addAppRow(ap){
+  document.getElementById('apps-tbody').innerHTML+=`<tr>
+    <td><input type="text" value="${ap?.marca||''}" placeholder="Chevrolet" style="min-width:85px"></td>
+    <td><input type="text" value="${ap?.modelo||''}" placeholder="Classic" style="min-width:85px"></td>
+    <td><input type="text" value="${ap?.anioD||''}" placeholder="2010" style="width:55px"></td>
+    <td><input type="text" value="${ap?.anioH||''}" placeholder="2020" style="width:55px"></td>
+    <td><input type="text" value="${ap?.cil||''}" placeholder="1.4" style="width:50px"></td>
+    <td><input type="text" value="${ap?.motor||''}" placeholder="F14D3" style="min-width:75px"></td>
+    <td><input type="text" value="${ap?.obs||''}" placeholder="Obs..." style="min-width:90px"></td>
+    <td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td>
+  </tr>`;
+}
+function addProvRow(c){
+  document.getElementById('prov-tbody').innerHTML+=`<tr>
+    <td><select style="min-width:120px"><option${c?.tipo==='ORIGINAL OEM'?' selected':''}>ORIGINAL OEM</option><option${c?.tipo==='Código proveedor'?' selected':''}>Código proveedor</option><option${c?.tipo==='Código interno'?' selected':''}>Código interno</option></select></td>
+    <td><input type="text" value="${c?.proveedor||''}" placeholder="RSF, NACAM..." style="min-width:80px"></td>
+    <td><input type="text" value="${c?.codigo||''}" placeholder="KYB-333831" style="min-width:90px"></td>
+    <td><input type="text" value="${c?.notas||''}" placeholder="" style="min-width:70px"></td>
+    <td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td>
+  </tr>`;
+}
+function setEquivTab(el,tab){
+  document.querySelectorAll('.etab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('equiv-panel').style.display=tab==='equiv'?'block':'none';
+  document.getElementById('sust-panel').style.display=tab==='sust'?'block':'none';
+}
+
+// ══════════════════════════════════════════
+// TOP VENDIDOS
+// ══════════════════════════════════════════
+function renderTop(){
+  const arts=DB.get('articulos')||[];
+  const rubro=document.getElementById('top-rubro')?.value||'';
+  const marca=document.getElementById('top-marca')?.value||'';
+  let data=arts.filter(a=>{
+    if(rubro&&a.rubro!==rubro) return false;
+    if(marca&&!(a.aplicaciones||[]).some(ap=>ap.marca===marca)) return false;
+    return true;
+  }).map(a=>({...a,vendidos:Math.floor(Math.random()*50)+1})).sort((a,b)=>b.vendidos-a.vendidos).slice(0,10);
+  const list=document.getElementById('top-list');
+  if(!list) return;
+  const maxU=data[0]?.vendidos||1;
+  list.innerHTML=data.map((t,i)=>`<div class="top-row"><div class="rank-num ${i===0?'rank1':i===1?'rank2':i===2?'rank3':'rankn'}">${i+1}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${t.desc.substring(0,35)}</div><div style="font-size:10px;color:var(--text3)">${t.cod} · ${t.rubro}</div><div class="top-bar-fill"><div class="top-bar-inner" style="width:${Math.round(t.vendidos/maxU*100)}%"></div></div></div><div style="font-size:11px;color:var(--text2);min-width:50px;text-align:right">${t.vendidos} u.</div></div>`).join('')||'<div style="color:var(--text3);font-size:11px">Sin datos</div>';
+}
+
+// ══════════════════════════════════════════
+// ALERTAS
+// ══════════════════════════════════════════
+function renderAlertas(){
+  const arts=DB.get('articulos')||[];
+  const criticos=arts.filter(a=>a.stock<=2);
+  const bajos=arts.filter(a=>a.stock>2&&a.stock<=a.stockMin);
+  document.getElementById('count-critico').textContent=criticos.length;
+  document.getElementById('count-bajo').textContent=bajos.length;
+  document.getElementById('count-total').textContent=arts.length;
+  const list=document.getElementById('alertas-list');
+  const todos=[...criticos,...bajos];
+  list.innerHTML=todos.map(a=>`<div class="alerta-row ${a.stock>2?'med':''}"><div style="font-size:20px"><i class="ti ti-${a.stock===0?'ban':'alert-triangle'}" style="color:${a.stock<=2?'var(--danger)':'var(--accent)'}"></i></div><div style="flex:1"><div style="font-size:12px;font-weight:500">${a.desc}</div><div style="font-size:10px;color:var(--text3)">${a.cod} · Stock: <strong style="color:${a.stock<=2?'var(--danger)':'var(--accent)'}">${a.stock}</strong> · Mínimo: ${a.stockMin}</div></div><button class="btn sm" onclick="editarArticulo(${a.id})"><i class="ti ti-edit"></i>Editar</button><button class="btn sm primary" style="margin-left:4px">Pedir</button></div>`).join('')||'<div style="color:var(--text3);font-size:11px">Sin alertas ✓</div>';
+}
+
+// ══════════════════════════════════════════
+// CUENTAS CORRIENTES
+// ══════════════════════════════════════════
+function renderCuentas(){
+  const clis=DB.get('clientes')||[];
+  const tabla=document.getElementById('cc-tabla');
+  if(!tabla) return;
+  tabla.innerHTML=clis.map(c=>{
+    const estado=c.saldo===0?'Al día':c.saldo<0?'Debe':'A favor';
+    const sc=c.saldo===0?'b-ok':c.saldo<0?'b-low':'b-info';
+    return `<tr><td>${c.nombre}</td><td>${c.tel||'—'}</td><td>$${(c.limite||0).toLocaleString('es-AR')}</td><td style="color:${c.saldo<0?'var(--danger)':c.saldo>0?'var(--success)':'var(--text2)'};font-weight:600">$${(c.saldo||0).toLocaleString('es-AR')}</td><td><span class="badge ${sc}">${estado}</span></td><td><button class="btn sm" onclick="editarCliente(${c.id})"><i class="ti ti-edit"></i></button></td></tr>`;
+  }).join('');
+  const deuda=clis.filter(c=>c.saldo<0).reduce((a,c)=>a+Math.abs(c.saldo),0);
+  document.getElementById('cc-resumen').textContent=`${clis.length} clientes · Deuda total: $${deuda.toLocaleString('es-AR')}`;
+}
+
+function guardarCliente(){
+  const nombre=document.getElementById('cli-nombre').value.trim();
+  if(!nombre){notif('El nombre es requerido','error');return;}
+  const clis=DB.get('clientes')||[];
+  const idExist=parseInt(document.getElementById('cli-id').value)||null;
+  const obj={nombre,cuit:document.getElementById('cli-cuit').value,tel:document.getElementById('cli-tel').value,email:document.getElementById('cli-email').value,dir:document.getElementById('cli-dir').value,iva:document.getElementById('cli-iva').value,limite:parseFloat(document.getElementById('cli-limite').value)||0,saldo:parseFloat(document.getElementById('cli-saldo').value)||0};
+  if(idExist){ const idx=clis.findIndex(c=>c.id===idExist); clis[idx]={...clis[idx],...obj}; }
+  else { clis.push({id:nextId(),...obj}); }
+  DB.set('clientes',clis);
+  closeModal('modal-cliente');
+  notif(idExist?'Cliente actualizado':'Cliente agregado');
+  renderCuentas(); initVentas();
+}
+
+function editarCliente(id){
+  const c=(DB.get('clientes')||[]).find(x=>x.id===id);
+  if(!c) return;
+  document.getElementById('modal-cli-title').textContent='Editar cliente';
+  document.getElementById('cli-id').value=id;
+  document.getElementById('cli-nombre').value=c.nombre||'';
+  document.getElementById('cli-cuit').value=c.cuit||'';
+  document.getElementById('cli-tel').value=c.tel||'';
+  document.getElementById('cli-email').value=c.email||'';
+  document.getElementById('cli-dir').value=c.dir||'';
+  document.getElementById('cli-iva').value=c.iva||'Consumidor final';
+  document.getElementById('cli-limite').value=c.limite||0;
+  document.getElementById('cli-saldo').value=c.saldo||0;
+  document.getElementById('btn-eliminar-cli').style.display='inline-flex';
+  openModal('modal-cliente');
+}
+
+function eliminarCliente(){
+  if(!confirm('¿Eliminar este cliente?')) return;
+  const id=parseInt(document.getElementById('cli-id').value);
+  DB.set('clientes',(DB.get('clientes')||[]).filter(c=>c.id!==id));
+  closeModal('modal-cliente');
+  notif('Cliente eliminado');
+  renderCuentas();
+}
+
+// ══════════════════════════════════════════
+// VENTAS
+// ══════════════════════════════════════════
+let ventaItems=[];
+let articuloSeleccionado=null;
+
+function initVentas(){
+  const hoy=new Date().toISOString().split('T')[0];
+  document.getElementById('venta-fecha').value=hoy;
+  const clis=DB.get('clientes')||[];
+  const sel=document.getElementById('venta-cliente');
+  sel.innerHTML='<option value="">— Seleccionar —</option>'+clis.map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
+  ventaItems=[];
+  renderVentaItems();
+}
+
+function buscarArticuloVenta(){
+  const kw=document.getElementById('venta-search').value.toLowerCase();
+  const res=document.getElementById('venta-search-results');
+  if(!kw){res.style.display='none';return;}
+  const arts=DB.get('articulos')||[];
+  const found=arts.filter(a=>a.desc.toLowerCase().includes(kw)||a.cod.toLowerCase().includes(kw)).slice(0,6);
+  if(!found.length){res.style.display='none';return;}
+  res.style.display='block';
+  res.innerHTML=found.map(a=>`<div onclick="seleccionarArticuloVenta(${a.id})" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--border);font-size:12px" onmouseover="this.style.background='var(--bg4)'" onmouseout="this.style.background=''"><strong>${a.cod}</strong> — ${a.desc} <span style="float:right;color:var(--accent)">$${(a.precio||0).toLocaleString('es-AR')}</span></div>`).join('');
+}
+
+function seleccionarArticuloVenta(id){
+  const a=(DB.get('articulos')||[]).find(x=>x.id===id);
+  if(!a) return;
+  articuloSeleccionado=a;
+  document.getElementById('venta-search').value=a.cod+' — '+a.desc;
+  document.getElementById('venta-search-results').style.display='none';
+}
+
+function agregarItemVenta(){
+  if(!articuloSeleccionado){notif('Seleccioná un artículo','error');return;}
+  const cant=parseInt(document.getElementById('venta-cant').value)||1;
+  const existing=ventaItems.find(i=>i.id===articuloSeleccionado.id);
+  if(existing){ existing.cant+=cant; }
+  else { ventaItems.push({id:articuloSeleccionado.id,cod:articuloSeleccionado.cod,desc:articuloSeleccionado.desc,precio:articuloSeleccionado.precio||0,cant}); }
+  articuloSeleccionado=null;
+  document.getElementById('venta-search').value='';
+  document.getElementById('venta-cant').value=1;
+  renderVentaItems();
+}
+
+function renderVentaItems(){
+  const tbody=document.getElementById('venta-items');
+  if(!tbody) return;
+  tbody.innerHTML=ventaItems.map((it,i)=>`<tr><td>${it.cod}</td><td>${it.desc}</td><td><input type="number" value="${it.cant}" min="1" style="width:50px;padding:3px 5px" onchange="ventaItems[${i}].cant=parseInt(this.value)||1;calcVenta()"></td><td>$${(it.precio||0).toLocaleString('es-AR')}</td><td>$${((it.precio||0)*(it.cant||1)).toLocaleString('es-AR')}</td><td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="ventaItems.splice(${i},1);renderVentaItems()"></i></td></tr>`).join('');
+  calcVenta();
+}
+
+function calcVenta(){
+  const sub=ventaItems.reduce((a,i)=>a+(i.precio||0)*(i.cant||1),0);
+  const iva=Math.round(sub*0.21);
+  document.getElementById('v-subtotal').textContent='$'+sub.toLocaleString('es-AR');
+  document.getElementById('v-iva').textContent='$'+iva.toLocaleString('es-AR');
+  document.getElementById('v-total').textContent='$'+(sub+iva).toLocaleString('es-AR');
+}
+
+function confirmarVenta(){
+  if(!ventaItems.length){notif('Agregá al menos un artículo','error');return;}
+  const cliId=document.getElementById('venta-cliente').value;
+  const cliNombre=cliId?(DB.get('clientes')||[]).find(c=>c.id==cliId)?.nombre||'Sin asignar':'Sin asignar';
+  const sub=ventaItems.reduce((a,i)=>a+(i.precio||0)*(i.cant||1),0);
+  const total=Math.round(sub*1.21);
+  const pago=document.getElementById('venta-pago').value;
+  const vents=DB.get('ventas')||[];
+  vents.push({id:nextId(),cliente:cliNombre,tipo:document.getElementById('venta-tipo').value,total,pago,fecha:document.getElementById('venta-fecha').value,estado:pago==='Cuenta corriente'?'Cta. cte.':'Cobrado',items:[...ventaItems]});
+  DB.set('ventas',vents);
+  // actualizar saldo si es cta cte
+  if(pago==='Cuenta corriente'&&cliId){
+    const clis=DB.get('clientes')||[];
+    const idx=clis.findIndex(c=>c.id==cliId);
+    if(idx>=0){clis[idx].saldo=(clis[idx].saldo||0)-total;DB.set('clientes',clis);}
+  }
+  ventaItems=[];
+  renderVentaItems();
+  notif('Venta confirmada por $'+total.toLocaleString('es-AR'));
+}
+
+function imprimirVenta(){window.print();}
+function setVentaTab(el){document.querySelectorAll('.tabs-row .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');}
+
+// ══════════════════════════════════════════
+// ADMIN DATOS
+// ══════════════════════════════════════════
+function setAdminTab(el,tab){
+  document.querySelectorAll('.tabs-row .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  ['art','cli','ven'].forEach(t=>document.getElementById('admin-'+t).style.display=t===tab?'block':'none');
+  if(tab==='art') renderAdminArt();
+  if(tab==='cli') renderAdminCli();
+  if(tab==='ven') renderAdminVen();
+}
+
+function renderAdminArt(){
+  const kw=(document.getElementById('admin-search-art')?.value||'').toLowerCase();
+  const arts=(DB.get('articulos')||[]).filter(a=>!kw||a.desc.toLowerCase().includes(kw)||a.cod.toLowerCase().includes(kw));
+  const tbody=document.getElementById('admin-art-tabla');
+  if(!tbody) return;
+  tbody.innerHTML=arts.map(a=>`<tr>
+    <td><input value="${a.cod}" style="width:90px" onchange="updateArtField(${a.id},'cod',this.value)"></td>
+    <td><input value="${a.desc}" style="width:200px" onchange="updateArtField(${a.id},'desc',this.value)"></td>
+    <td><select style="width:120px" onchange="updateArtField(${a.id},'rubro',this.value)">${['Amortiguadores','Frenos - Pastillas','Frenos - Discos','Rótulas y bujes','Filtros','Correas','Electricidad','Accesorios','Cosmética'].map(r=>`<option${a.rubro===r?' selected':''}>${r}</option>`).join('')}</select></td>
+    <td><input type="number" value="${a.precio||0}" style="width:80px" onchange="updateArtField(${a.id},'precio',parseFloat(this.value))"></td>
+    <td><input type="number" value="${a.costo||0}" style="width:75px" onchange="updateArtField(${a.id},'costo',parseFloat(this.value))"></td>
+    <td><input type="number" value="${a.stock||0}" style="width:55px" onchange="updateArtField(${a.id},'stock',parseInt(this.value))"></td>
+    <td><input type="number" value="${a.stockMin||0}" style="width:50px" onchange="updateArtField(${a.id},'stockMin',parseInt(this.value))"></td>
+    <td><button class="btn sm" onclick="editarArticulo(${a.id})"><i class="ti ti-edit"></i></button> <button class="btn sm danger" onclick="eliminarDirecto(${a.id})"><i class="ti ti-trash"></i></button></td>
+  </tr>`).join('');
+}
+
+function renderAdminCli(){
+  const kw=(document.getElementById('admin-search-cli')?.value||'').toLowerCase();
+  const clis=(DB.get('clientes')||[]).filter(c=>!kw||c.nombre.toLowerCase().includes(kw));
+  const tbody=document.getElementById('admin-cli-tabla');
+  if(!tbody) return;
+  tbody.innerHTML=clis.map(c=>`<tr>
+    <td><input value="${c.nombre}" style="width:140px" onchange="updateCliField(${c.id},'nombre',this.value)"></td>
+    <td><input value="${c.cuit||''}" style="width:110px" onchange="updateCliField(${c.id},'cuit',this.value)"></td>
+    <td><input value="${c.tel||''}" style="width:100px" onchange="updateCliField(${c.id},'tel',this.value)"></td>
+    <td><input value="${c.email||''}" style="width:140px" onchange="updateCliField(${c.id},'email',this.value)"></td>
+    <td><input type="number" value="${c.limite||0}" style="width:90px" onchange="updateCliField(${c.id},'limite',parseFloat(this.value))"></td>
+    <td style="color:${c.saldo<0?'var(--danger)':'var(--success)'}">$${(c.saldo||0).toLocaleString('es-AR')}</td>
+    <td><button class="btn sm danger" onclick="eliminarClienteDirecto(${c.id})"><i class="ti ti-trash"></i></button></td>
+  </tr>`).join('');
+}
+
+function renderAdminVen(){
+  const vents=DB.get('ventas')||[];
+  const tbody=document.getElementById('admin-ven-tabla');
+  if(!tbody) return;
+  tbody.innerHTML=vents.slice().reverse().map(v=>`<tr><td>#${String(v.id).padStart(4,'0')}</td><td>${v.cliente}</td><td>${v.tipo}</td><td>$${(v.total||0).toLocaleString('es-AR')}</td><td>${v.pago}</td><td>${v.fecha}</td><td><span class="badge ${v.estado==='Cobrado'?'b-ok':v.estado==='Cta. cte.'?'b-med':'b-low'}">${v.estado}</span></td></tr>`).join('');
+}
+
+function updateArtField(id,field,val){
+  const arts=DB.get('articulos')||[];
+  const idx=arts.findIndex(a=>a.id===id);
+  if(idx>=0){arts[idx][field]=val;DB.set('articulos',arts);updateAlertaCount();}
+}
+function updateCliField(id,field,val){
+  const clis=DB.get('clientes')||[];
+  const idx=clis.findIndex(c=>c.id===id);
+  if(idx>=0){clis[idx][field]=val;DB.set('clientes',clis);}
+}
+function eliminarDirecto(id){
+  if(!confirm('¿Eliminar este artículo?')) return;
+  DB.set('articulos',(DB.get('articulos')||[]).filter(a=>a.id!==id));
+  renderAdminArt(); updateAlertaCount(); notif('Eliminado');
+}
+function eliminarClienteDirecto(id){
+  if(!confirm('¿Eliminar este cliente?')) return;
+  DB.set('clientes',(DB.get('clientes')||[]).filter(c=>c.id!==id));
+  renderAdminCli(); notif('Eliminado');
+}
+
+// ══════════════════════════════════════════
+// BACKUP / EXPORT
+// ══════════════════════════════════════════
+function exportarBackup(){
+  const data={articulos:DB.get('articulos'),clientes:DB.get('clientes'),ventas:DB.get('ventas'),fecha:new Date().toISOString()};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jm-repuestos-backup-'+new Date().toISOString().split('T')[0]+'.json';a.click();
+  notif('Backup descargado');
+}
+function importarBackup(input){
+  const file=input.files[0];if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const data=JSON.parse(e.target.result);
+      if(data.articulos) DB.set('articulos',data.articulos);
+      if(data.clientes) DB.set('clientes',data.clientes);
+      if(data.ventas) DB.set('ventas',data.ventas);
+      notif('Backup restaurado correctamente');
+      renderDashboard();
+    }catch{notif('Archivo inválido','error');}
+  };
+  reader.readAsText(file);
+}
+function exportarDatos(tipo){
+  const data=DB.get(tipo)||[];
+  const keys=data[0]?Object.keys(data[0]).filter(k=>typeof data[0][k]!=='object'):[];
+  const csv=[keys.join(','),...data.map(r=>keys.map(k=>'"'+(r[k]||'')+'"').join(','))].join('\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='jm-'+tipo+'-'+new Date().toISOString().split('T')[0]+'.csv';a.click();
+  notif('Exportado como CSV');
+}
+
+// ══════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════
+function guardarConfig(){
+  const cfg={nombre:document.getElementById('cfg-nombre').value,cuit:document.getElementById('cfg-cuit').value,dir:document.getElementById('cfg-dir').value,tel:document.getElementById('cfg-tel').value};
+  DB.set('config',cfg);
+  notif('Configuración guardada');
+}
+function cargarConfig(){
+  const cfg=DB.get('config')||{};
+  if(cfg.nombre) document.getElementById('cfg-nombre').value=cfg.nombre;
+  if(cfg.cuit) document.getElementById('cfg-cuit').value=cfg.cuit;
+  if(cfg.dir) document.getElementById('cfg-dir').value=cfg.dir;
+  if(cfg.tel) document.getElementById('cfg-tel').value=cfg.tel;
+}
+
+// ══════════════════════════════════════════
+// TEMA
+// ══════════════════════════════════════════
+function toggleThemePanel(){const p=document.getElementById('theme-panel');p.style.display=p.style.display==='none'?'block':'none'}
+function setAcc(a,a2,dot){
+  document.documentElement.style.setProperty('--accent',a);
+  document.documentElement.style.setProperty('--accent2',a2);
+  DB.set('tema',{acc:a,acc2:a2,mode:DB.get('tema')?.mode||'dark'});
+}
+function setMode(m){
+  const r=document.documentElement;
+  if(m==='light'){r.style.setProperty('--bg','#f0f0eb');r.style.setProperty('--bg2','#e8e8e3');r.style.setProperty('--bg3','#deded9');r.style.setProperty('--bg4','#d4d4cf');r.style.setProperty('--border','#c8c8c0');r.style.setProperty('--border2','#b8b8b0');r.style.setProperty('--text','#1a1a1a');r.style.setProperty('--text2','#555');r.style.setProperty('--text3','#999');}
+  else{r.style.setProperty('--bg','#0f0f0f');r.style.setProperty('--bg2','#161616');r.style.setProperty('--bg3','#1e1e1e');r.style.setProperty('--bg4','#252525');r.style.setProperty('--border','#2a2a2a');r.style.setProperty('--border2','#333');r.style.setProperty('--text','#e8e8e8');r.style.setProperty('--text2','#999');r.style.setProperty('--text3','#555');}
+  const t=DB.get('tema')||{};DB.set('tema',{...t,mode:m});
+}
+function cargarTema(){
+  const t=DB.get('tema');
+  if(t?.acc) setAcc(t.acc,t.acc2||'#c07010');
+  if(t?.mode) setMode(t.mode);
+}
+
+// ══════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════
+initData();
+cargarTema();
+cargarConfig();
+renderDashboard();
+filtrados=DB.get('articulos')||[];
+</script>
+</body>
+</html>
