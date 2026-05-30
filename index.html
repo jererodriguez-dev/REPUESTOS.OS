@@ -138,6 +138,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
 
 /* MEDIDAS */
 .medidas-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+/* DATOS TECNICOS */
+.datos-tec-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
 
 /* EQUIV TABS */
 .etab{padding:5px 12px;border-radius:5px;cursor:pointer;font-size:11px;color:var(--text2);border:1px solid var(--border);background:var(--bg3);transition:.15s;display:inline-flex;align-items:center;gap:5px;margin-right:4px;margin-bottom:10px}
@@ -350,6 +352,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="tab active" data-admin="art">Artículos</div>
       <div class="tab" data-admin="cli">Clientes</div>
       <div class="tab" data-admin="ven">Ventas</div>
+      <div class="tab" data-admin="rubros">Rubros</div>
     </div>
     <div id="admin-art-panel">
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
@@ -378,6 +381,15 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="card" style="padding:0;overflow:hidden">
         <table><thead><tr><th>#</th><th>Cliente</th><th>Tipo</th><th>Total</th><th>Pago</th><th>Fecha</th><th>Estado</th></tr></thead>
         <tbody id="admin-ven-tabla"></tbody></table>
+      </div>
+    </div>
+    <div id="admin-rubros-panel" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
+        <button class="btn primary sm" id="btn-admin-nuevo-rubro"><i class="ti ti-plus"></i>Nuevo rubro</button>
+      </div>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr><th>Nombre</th><th>Datos técnicos</th><th>Medidas</th><th></th></tr></thead>
+        <tbody id="admin-rubros-tabla"></tbody></table>
       </div>
     </div>
   </div>
@@ -445,6 +457,11 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg"><label>Stock mínimo</label><input type="number" id="ficha-stockmin" placeholder="3"></div>
       </div>
       <div class="fg"><label>Observaciones</label><textarea id="ficha-obs" rows="2" placeholder="MAS DUREZA (CARGA), par de torque 45Nm..."></textarea></div>
+
+      <div class="sec-title">Datos técnicos <span style="color:var(--text3);font-size:9px" id="datos-tec-rubro-label"></span></div>
+      <div class="datos-tec-grid" id="datos-tec-container">
+        <div style="font-size:11px;color:var(--text3);grid-column:1/-1">Seleccioná un rubro para ver los datos técnicos</div>
+      </div>
 
       <div class="sec-title">Medidas <span style="color:var(--text3);font-size:9px" id="medidas-rubro-label"></span></div>
       <div class="medidas-grid" id="medidas-container">
@@ -598,34 +615,87 @@ function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 // ── MEDIDAS DINÁMICAS ──
+// ── CONFIGURACIÓN DE CAMPOS POR RUBRO ──
+// datosTecPorRubro: campos tipo select/texto corto (Posición, Lado, etc.)
+// medidasPorRubro: campos numéricos con unidad
+const datosTecPorRubro={
+  'Amortiguadores':[
+    {l:'Posición',t:'select',ops:['','Delantero','Trasero','Universal']},
+    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos','N/A']},
+    {l:'Tope/Fuelle',t:'text',u:''},
+  ],
+  'Frenos - Pastillas':[
+    {l:'Posición',t:'select',ops:['','Delantero','Trasero']},
+    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos']},
+  ],
+  'Frenos - Discos':[
+    {l:'Posición',t:'select',ops:['','Delantero','Trasero']},
+    {l:'Ventilado',t:'select',ops:['','Sí','No']},
+  ],
+  'Rótulas y bujes':[
+    {l:'Posición',t:'select',ops:['','Superior','Inferior','Delantera','Trasera']},
+    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos']},
+  ],
+  'Filtros':[
+    {l:'Tipo',t:'select',ops:['','Aceite','Aire','Combustible','Habitáculo']},
+  ],
+  'Correas':[
+    {l:'Tipo',t:'select',ops:['','Distribución','Poly-V','Trapecial']},
+  ],
+};
 const medidasPorRubro={
-  'Amortiguadores':[{l:'Longitud abierta',u:'mm'},{l:'Longitud cerrada',u:'mm'},{l:'Carrera',u:'mm'},{l:'Anclaie superior',u:''},{l:'Anclaie inferior',u:''},{l:'Tope/Fuelle',u:''}],
-  'Frenos - Pastillas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Espesor',u:'mm'},{l:'Diámetro disco',u:'mm'}],
+  'Amortiguadores':[{l:'Longitud abierta',u:'mm'},{l:'Longitud cerrada',u:'mm'},{l:'Carrera',u:'mm'},{l:'Anclaje superior',u:''},{l:'Anclaje inferior',u:''}],
+  'Frenos - Pastillas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Espesor nuevo',u:'mm'},{l:'Espesor mínimo',u:'mm'}],
   'Frenos - Discos':[{l:'Diámetro exterior',u:'mm'},{l:'Diámetro interior',u:'mm'},{l:'Espesor nuevo',u:'mm'},{l:'Espesor mínimo',u:'mm'},{l:'N° orificios',u:''}],
   'Rótulas y bujes':[{l:'Diámetro vástago',u:'mm'},{l:'Paso de rosca',u:''},{l:'Largo total',u:'mm'},{l:'Ángulo',u:'°'}],
   'Filtros':[{l:'Diámetro exterior',u:'mm'},{l:'Alto',u:'mm'},{l:'Rosca interior',u:''},{l:'Presión bypass',u:'bar'}],
   'Correas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Perfil',u:''},{l:'N° dientes',u:''}],
 };
-const rubros=['Amortiguadores','Frenos - Pastillas','Frenos - Discos','Rótulas y bujes','Filtros','Correas','Electricidad','Accesorios','Cosmética','Lubricantes'];
+
+// rubrosDB: se carga desde Supabase [{id, nombre}]
+let rubrosDB=[];
 
 function updateMedidas(){
-  const rubro=document.getElementById('ficha-rubro').value;
+  const rubroNombre=document.getElementById('ficha-rubro').options[document.getElementById('ficha-rubro').selectedIndex]?.text||'';
   const cont=document.getElementById('medidas-container');
   const lbl=document.getElementById('medidas-rubro-label');
-  const fields=medidasPorRubro[rubro];
-  if(!fields){cont.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">Sin medidas estándar para este rubro</div>';lbl.textContent='';return;}
-  lbl.textContent='· '+rubro;
-  cont.innerHTML=fields.map(f=>`<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-medida="${f.l}" placeholder="${f.u}"></div>`).join('');
+  const contTec=document.getElementById('datos-tec-container');
+  const lblTec=document.getElementById('datos-tec-rubro-label');
+
+  // Datos técnicos
+  const tecFields=datosTecPorRubro[rubroNombre];
+  if(!tecFields){
+    contTec.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">Sin datos técnicos para este rubro</div>';
+    lblTec.textContent='';
+  } else {
+    lblTec.textContent='· '+rubroNombre;
+    contTec.innerHTML=tecFields.map(f=>{
+      if(f.t==='select'){
+        return `<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}</label><select data-tec="${f.l}">${f.ops.map(o=>`<option value="${o}">${o||'—'}</option>`).join('')}</select></div>`;
+      }
+      return `<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-tec="${f.l}" placeholder="${f.u||''}"></div>`;
+    }).join('');
+  }
+
+  // Medidas
+  const fields=medidasPorRubro[rubroNombre];
+  if(!fields){
+    cont.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">Sin medidas estándar para este rubro</div>';
+    lbl.textContent='';
+  } else {
+    lbl.textContent='· '+rubroNombre;
+    cont.innerHTML=fields.map(f=>`<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-medida="${f.l}" placeholder="${f.u}"></div>`).join('');
+  }
 }
 
-function cargarRubrosSelect(){
-  rubros.forEach(r=>{
-    ['ficha-rubro','f-rubro','top-rubro'].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el) el.innerHTML+=(id==='ficha-rubro'?'':`<option value="${r}">${r}</option>`)||`<option value="${r}">${r}</option>`;
-    });
-  });
-  document.getElementById('ficha-rubro').innerHTML='<option value="">— Seleccionar —</option>'+rubros.map(r=>`<option value="${r}">${r}</option>`).join('');
+async function cargarRubrosSelect(){
+  const {data,error}=await _sb.from('rubros').select('id,nombre').is('deleted_at',null).order('nombre');
+  if(error||!data?.length) return;
+  rubrosDB=data;
+  const opts=data.map(r=>`<option value="${r.id}">${r.nombre}</option>`).join('');
+  document.getElementById('ficha-rubro').innerHTML='<option value="">— Seleccionar —</option>'+opts;
+  document.getElementById('f-rubro').innerHTML='<option value="">— Todos —</option>'+opts;
+  document.getElementById('top-rubro').innerHTML='<option value="">Todos</option>'+opts;
 }
 
 // ── CATÁLOGO ──
@@ -695,7 +765,10 @@ async function editarArticulo(id){
   document.getElementById('ficha-ubic').value=a.ubicacion||'';
   document.getElementById('ficha-um').value=a.unidad_medida||'UN';
   updateMedidas();
-  if(a.medidas){Object.entries(a.medidas).forEach(([k,v])=>{const inp=document.querySelector(`[data-medida="${k}"]`);if(inp)inp.value=v;});}
+  if(a.medidas){Object.entries(a.medidas).forEach(([k,v])=>{
+    if(k.startsWith('__tec__')){const inp=document.querySelector(`[data-tec="${k.replace('__tec__','')}"]`);if(inp)inp.value=v;}
+    else{const inp=document.querySelector(`[data-medida="${k}"]`);if(inp)inp.value=v;}
+  });}
   // aplicaciones
   document.getElementById('apps-tbody').innerHTML='';
   const {data:apps}=await _sb.from('aplicaciones').select('*').or(`codigo_articulo.eq.${a.codigo_articulo},base_id.eq.${a.base_id||'null'}`);
@@ -719,14 +792,14 @@ async function guardarArticulo(){
   if(!cod||!desc){toast('Código y descripción son requeridos',true);return;}
   const precio=parseFloat(document.getElementById('ficha-precio').value)||0;
   const medidas={};
+  document.querySelectorAll('#datos-tec-container [data-tec]').forEach(inp=>{if(inp.value)medidas['__tec__'+inp.getAttribute('data-tec')]=inp.value;});
   document.querySelectorAll('#medidas-container [data-medida]').forEach(inp=>{if(inp.value)medidas[inp.getAttribute('data-medida')]=inp.value;});
   const obj={
     codigo_articulo:cod,
     codigo_barra:document.getElementById('ficha-barra').value||null,
     descripcion:desc,
     rubro_id:document.getElementById('ficha-rubro').value||null,
-    posicion:document.getElementById('ficha-pos').value||null,
-    lado:document.getElementById('ficha-lado').value||null,
+
     marca_articulo:document.getElementById('ficha-marca-art').value||null,
     precio_venta_actual:precio,
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
@@ -1048,6 +1121,35 @@ async function backup(){
   toast('Backup descargado');
 }
 
+// ── ADMIN RUBROS ──
+async function renderAdminRubros(){
+  const {data}=await _sb.from('rubros').select('id,nombre').is('deleted_at',null).order('nombre');
+  document.getElementById('admin-rubros-tabla').innerHTML=(data||[]).map(r=>`<tr>
+    <td><input value="${r.nombre}" style="width:180px" onchange="updateRubro('${r.id}',this.value)"></td>
+    <td style="font-size:10px;color:var(--text3)">${Object.keys(datosTecPorRubro[r.nombre]||{}).length?'Sí':'—'}</td>
+    <td style="font-size:10px;color:var(--text3)">${medidasPorRubro[r.nombre]?.length||'—'}</td>
+    <td><button class="btn sm danger" onclick="eliminarRubro('${r.id}')"><i class="ti ti-trash"></i></button></td>
+  </tr>`).join('')||'<tr><td colspan="4" style="color:var(--text3);text-align:center">Sin rubros</td></tr>';
+}
+async function updateRubro(id,nombre){
+  if(!nombre.trim()) return;
+  await _sb.from('rubros').update({nombre:nombre.trim()}).eq('id',id);
+  await cargarRubrosSelect();
+  toast('Rubro actualizado');
+}
+async function eliminarRubro(id){
+  if(!confirm('¿Eliminar este rubro? Los artículos que lo usen quedarán sin rubro.')) return;
+  await _sb.from('rubros').update({deleted_at:new Date().toISOString()}).eq('id',id);
+  renderAdminRubros(); cargarRubrosSelect(); toast('Eliminado');
+}
+async function nuevoRubro(){
+  const nombre=prompt('Nombre del nuevo rubro:');
+  if(!nombre?.trim()) return;
+  const {error}=await _sb.from('rubros').insert([{nombre:nombre.trim()}]);
+  if(error){toast('Error: '+error.message,true);return;}
+  renderAdminRubros(); cargarRubrosSelect(); toast('Rubro agregado');
+}
+
 // ── CONFIG ──
 function guardarConfig(){
   localStorage.setItem('rpos_cfg',JSON.stringify({nombre:document.getElementById('cfg-nombre').value,cuit:document.getElementById('cfg-cuit').value,dir:document.getElementById('cfg-dir').value,tel:document.getElementById('cfg-tel').value}));
@@ -1094,7 +1196,7 @@ function mostrarApp(email){
 window.addEventListener('DOMContentLoaded',()=>{
   cargarTema();
   cargarConfig();
-  cargarRubrosSelect();
+  cargarRubrosSelect(); // async, carga desde Supabase
 
   // nav
   document.querySelectorAll('.ni[data-page]').forEach(n=>n.addEventListener('click',()=>goTo(n.getAttribute('data-page'))));
@@ -1139,11 +1241,12 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.tab[data-admin]').forEach(t=>t.addEventListener('click',()=>{
     document.querySelectorAll('.tab[data-admin]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    ['art','cli','ven'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
+    ['art','cli','ven','rubros'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
     document.getElementById('admin-'+t.getAttribute('data-admin')+'-panel').style.display='block';
     if(t.getAttribute('data-admin')==='art') renderAdminArt();
     if(t.getAttribute('data-admin')==='cli') renderAdminCli();
     if(t.getAttribute('data-admin')==='ven') renderAdminVen();
+    if(t.getAttribute('data-admin')==='rubros') renderAdminRubros();
   }));
 
   // admin search
@@ -1151,6 +1254,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('admin-search-cli').addEventListener('input',renderAdminCli);
   document.getElementById('btn-export-csv').addEventListener('click',exportarCSV);
   document.getElementById('btn-backup').addEventListener('click',backup);
+  document.getElementById('btn-admin-nuevo-rubro').addEventListener('click',nuevoRubro);
 
   // catalogo search
   document.getElementById('f-keyword').addEventListener('input',renderCatalogo);
