@@ -544,7 +544,42 @@ tr:hover td{background:var(--bg3);color:var(--text)}
   </div>
 </div>
 
-<!-- THEME PANEL -->
+<!-- MODAL NUEVO RUBRO -->
+<div class="modal-bg" id="modal-nuevo-rubro">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title">Nuevo rubro</div>
+      <button class="btn sm" onclick="closeModal('modal-nuevo-rubro')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="fg"><label>Nombre del rubro</label><input id="nuevo-rubro-nombre" placeholder="Ej: Juntas, Embragues..." autocomplete="off"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn sm" onclick="closeModal('modal-nuevo-rubro')">Cancelar</button>
+        <button class="btn primary" onclick="confirmarNuevoRubro()"><i class="ti ti-plus"></i>Agregar rubro</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR ELIMINACIÓN RUBRO -->
+<div class="modal-bg" id="modal-confirmar-rubro">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Eliminar rubro</div>
+      <button class="btn sm" onclick="closeModal('modal-confirmar-rubro')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;margin-bottom:6px">¿Eliminar el rubro <strong id="confirm-rubro-nombre"></strong>?</p>
+      <p style="font-size:11px;color:var(--text3)">Los artículos que lo usen quedarán sin rubro asignado.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-confirmar-rubro')">Cancelar</button>
+        <button class="btn danger" onclick="confirmarEliminarRubro()"><i class="ti ti-trash"></i>Sí, eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 <div id="theme-panel" style="display:none;position:fixed;top:54px;right:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:14px;width:180px;z-index:300">
   <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Acento</div>
   <div style="display:flex;gap:6px;margin-bottom:10px">
@@ -656,7 +691,13 @@ const medidasPorRubro={
 let rubrosDB=[];
 
 function updateMedidas(){
-  const rubroNombre=document.getElementById('ficha-rubro').options[document.getElementById('ficha-rubro').selectedIndex]?.text||'';
+  const sel=document.getElementById('ficha-rubro');
+  const selText=sel.options[sel.selectedIndex]?.text||'';
+  // Si el texto es el placeholder o vacío, buscar por UUID en rubrosDB
+  const uuid=sel.value;
+  const rubroNombre=(selText&&selText!=='— Seleccionar —'&&selText!=='')
+    ? selText
+    : (rubrosDB.find(r=>r.id===uuid)?.nombre||'');
   const cont=document.getElementById('medidas-container');
   const lbl=document.getElementById('medidas-rubro-label');
   const contTec=document.getElementById('datos-tec-container');
@@ -1128,7 +1169,7 @@ async function renderAdminRubros(){
     <td><input value="${r.nombre}" style="width:180px" onchange="updateRubro('${r.id}',this.value)"></td>
     <td style="font-size:10px;color:var(--text3)">${Object.keys(datosTecPorRubro[r.nombre]||{}).length?'Sí':'—'}</td>
     <td style="font-size:10px;color:var(--text3)">${medidasPorRubro[r.nombre]?.length||'—'}</td>
-    <td><button class="btn sm danger" onclick="eliminarRubro('${r.id}')"><i class="ti ti-trash"></i></button></td>
+    <td><button class="btn sm danger" onclick="eliminarRubro('${r.id}','${r.nombre.replace(/'/g,"\\'")}')"><i class="ti ti-trash"></i></button></td>
   </tr>`).join('')||'<tr><td colspan="4" style="color:var(--text3);text-align:center">Sin rubros</td></tr>';
 }
 async function updateRubro(id,nombre){
@@ -1137,16 +1178,30 @@ async function updateRubro(id,nombre){
   await cargarRubrosSelect();
   toast('Rubro actualizado');
 }
-async function eliminarRubro(id){
-  if(!confirm('¿Eliminar este rubro? Los artículos que lo usen quedarán sin rubro.')) return;
-  await _sb.from('rubros').update({deleted_at:new Date().toISOString()}).eq('id',id);
-  renderAdminRubros(); cargarRubrosSelect(); toast('Eliminado');
+let _rubroEliminarId=null;
+function eliminarRubro(id,nombre){
+  _rubroEliminarId=id;
+  document.getElementById('confirm-rubro-nombre').textContent=nombre||'este rubro';
+  openModal('modal-confirmar-rubro');
 }
-async function nuevoRubro(){
-  const nombre=prompt('Nombre del nuevo rubro:');
-  if(!nombre?.trim()) return;
-  const {error}=await _sb.from('rubros').insert([{nombre:nombre.trim()}]);
+async function confirmarEliminarRubro(){
+  if(!_rubroEliminarId) return;
+  await _sb.from('rubros').update({deleted_at:new Date().toISOString()}).eq('id',_rubroEliminarId);
+  _rubroEliminarId=null;
+  closeModal('modal-confirmar-rubro');
+  renderAdminRubros(); cargarRubrosSelect(); toast('Rubro eliminado');
+}
+function nuevoRubro(){
+  document.getElementById('nuevo-rubro-nombre').value='';
+  openModal('modal-nuevo-rubro');
+  setTimeout(()=>document.getElementById('nuevo-rubro-nombre').focus(),100);
+}
+async function confirmarNuevoRubro(){
+  const nombre=document.getElementById('nuevo-rubro-nombre').value.trim();
+  if(!nombre){toast('Escribí un nombre',true);return;}
+  const {error}=await _sb.from('rubros').insert([{nombre}]);
   if(error){toast('Error: '+error.message,true);return;}
+  closeModal('modal-nuevo-rubro');
   renderAdminRubros(); cargarRubrosSelect(); toast('Rubro agregado');
 }
 
@@ -1255,6 +1310,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-export-csv').addEventListener('click',exportarCSV);
   document.getElementById('btn-backup').addEventListener('click',backup);
   document.getElementById('btn-admin-nuevo-rubro').addEventListener('click',nuevoRubro);
+  document.getElementById('nuevo-rubro-nombre').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNuevoRubro();});
 
   // catalogo search
   document.getElementById('f-keyword').addEventListener('input',renderCatalogo);
@@ -1289,3 +1345,4 @@ window.addEventListener('DOMContentLoaded',()=>{
 </script>
 </body>
 </html>
+
