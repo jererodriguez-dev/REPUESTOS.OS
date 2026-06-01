@@ -480,7 +480,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="sec-title">Códigos de proveedor y OEM</div>
       <div style="overflow-x:auto;margin-bottom:8px">
         <table class="app-table">
-          <thead><tr><th>Tipo</th><th>Proveedor / Marca</th><th>Código</th><th>Notas</th><th></th></tr></thead>
+          <thead><tr><th>Tipo</th><th>Código proveedor</th><th>Descripción proveedor</th><th>Notas</th><th></th></tr></thead>
           <tbody id="prov-tbody"></tbody>
         </table>
       </div>
@@ -806,22 +806,26 @@ async function editarArticulo(id){
   document.getElementById('ficha-ubic').value=a.ubicacion||'';
   document.getElementById('ficha-um').value=a.unidad_medida||'UN';
   updateMedidas();
-  if(a.medidas){Object.entries(a.medidas).forEach(([k,v])=>{
-    if(k.startsWith('__tec__')){const inp=document.querySelector(`[data-tec="${k.replace('__tec__','')}"]`);if(inp)inp.value=v;}
-    else{const inp=document.querySelector(`[data-medida="${k}"]`);if(inp)inp.value=v;}
-  });}
+  // medidas desde tabla medidas
+  const {data:meds}=await _sb.from('medidas').select('*').eq('id_articulo',a.id);
+  (meds||[]).forEach(m=>{
+    const tecInp=document.querySelector(`[data-tec="${m.nombre_medida}"]`);
+    const medInp=document.querySelector(`[data-medida="${m.nombre_medida}"]`);
+    if(tecInp) tecInp.value=m.valor;
+    else if(medInp) medInp.value=m.valor;
+  });
   // aplicaciones
   document.getElementById('apps-tbody').innerHTML='';
-  const {data:apps}=await _sb.from('aplicaciones').select('*').or(`codigo_articulo.eq.${a.codigo_articulo},base_id.eq.${a.base_id||'null'}`);
+  const {data:apps}=await _sb.from('aplicaciones').select('*').eq('id_articulo',a.id);
   (apps||[]).forEach(ap=>addAppRow(ap));
   if(!(apps||[]).length) addAppRow();
   // codigos proveedor
   document.getElementById('prov-tbody').innerHTML='';
-  const {data:provs}=await _sb.from('codigos_proveedor').select('*').eq('codigo_articulo',a.codigo_articulo);
+  const {data:provs}=await _sb.from('codigos_proveedor').select('*').eq('id_articulo',a.id);
   (provs||[]).forEach(p=>addProvRow(p));
   if(!(provs||[]).length) addProvRow();
   // historial
-  const {data:hist}=await _sb.from('historial_precios').select('*').eq('codigo_articulo',a.codigo_articulo).order('fecha',{ascending:false}).limit(5);
+  const {data:hist}=await _sb.from('historial_precios').select('*').eq('id_articulo',a.id).order('fecha',{ascending:false}).limit(5);
   document.getElementById('ficha-hist-precios').innerHTML=(hist||[]).map(h=>`<div class="hist-row"><span style="color:var(--text3);min-width:90px">${h.fecha?.split('T')[0]}</span><span style="font-weight:600">$${(h.precio_venta||0).toLocaleString('es-AR')}</span></div>`).join('')||'<div style="font-size:11px;color:var(--text3)">Sin historial</div>';
   document.getElementById('btn-eliminar-art').style.display='inline-flex';
   openModal('modal-ficha');
@@ -832,15 +836,11 @@ async function guardarArticulo(){
   const desc=document.getElementById('ficha-desc').value.trim();
   if(!cod||!desc){toast('Código y descripción son requeridos',true);return;}
   const precio=parseFloat(document.getElementById('ficha-precio').value)||0;
-  const medidas={};
-  document.querySelectorAll('#datos-tec-container [data-tec]').forEach(inp=>{if(inp.value)medidas['__tec__'+inp.getAttribute('data-tec')]=inp.value;});
-  document.querySelectorAll('#medidas-container [data-medida]').forEach(inp=>{if(inp.value)medidas[inp.getAttribute('data-medida')]=inp.value;});
   const obj={
     codigo_articulo:cod,
     codigo_barra:document.getElementById('ficha-barra').value||null,
     descripcion:desc,
     rubro_id:document.getElementById('ficha-rubro').value||null,
-
     marca_articulo:document.getElementById('ficha-marca-art').value||null,
     precio_venta_actual:precio,
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
@@ -849,39 +849,54 @@ async function guardarArticulo(){
     observacion:document.getElementById('ficha-obs').value||null,
     ubicacion:document.getElementById('ficha-ubic').value||null,
     unidad_medida:document.getElementById('ficha-um').value||'UN',
-    medidas:Object.keys(medidas).length?medidas:null,
     activo:true
   };
   const idExist=document.getElementById('ficha-id').value;
+  let artId=idExist?parseInt(idExist):null;
   let error;
   if(idExist){
     ({error}=await _sb.from('articulos').update(obj).eq('id',idExist));
-    if(!error&&precio) await _sb.from('historial_precios').insert([{codigo_articulo:cod,precio_venta:precio,precio_costo:obj.precio_costo_actual}]);
   } else {
-    ({error}=await _sb.from('articulos').insert([obj]));
-    if(!error&&precio) await _sb.from('historial_precios').insert([{codigo_articulo:cod,precio_venta:precio,precio_costo:obj.precio_costo_actual}]);
+    const {data:inserted,error:err}=await _sb.from('articulos').insert([obj]).select('id').single();
+    error=err;
+    if(inserted) artId=inserted.id;
   }
   if(error){toast('Error: '+error.message,true);return;}
+  if(precio&&artId){
+    await _sb.from('historial_precios').insert([{id_articulo:artId,precio_venta:precio,precio_costo:obj.precio_costo_actual}]);
+  }
+  // guardar medidas en tabla medidas
+  if(artId){
+    const medidasRows=[];
+    document.querySelectorAll('#datos-tec-container [data-tec]').forEach(inp=>{
+      if(inp.value) medidasRows.push({id_articulo:artId,nombre_medida:inp.getAttribute('data-tec'),valor:inp.value});
+    });
+    document.querySelectorAll('#medidas-container [data-medida]').forEach(inp=>{
+      if(inp.value) medidasRows.push({id_articulo:artId,nombre_medida:inp.getAttribute('data-medida'),valor:inp.value});
+    });
+    await _sb.from('medidas').delete().eq('id_articulo',artId);
+    if(medidasRows.length) await _sb.from('medidas').insert(medidasRows);
+  }
   // guardar aplicaciones
-  const apps=[];
-  document.querySelectorAll('#apps-tbody tr').forEach(tr=>{
-    const ins=tr.querySelectorAll('input');
-    if(ins[0]&&ins[0].value) apps.push({codigo_articulo:cod,marca:ins[0].value,modelo:ins[1]?.value||'',anio_desde:parseInt(ins[2]?.value)||null,anio_hasta:parseInt(ins[3]?.value)||null,motor:ins[4]?.value||null,observacion:ins[5]?.value||null});
-  });
-  if(apps.length){
-    await _sb.from('aplicaciones').delete().eq('codigo_articulo',cod);
-    await _sb.from('aplicaciones').insert(apps);
+  if(artId){
+    const apps=[];
+    document.querySelectorAll('#apps-tbody tr').forEach(tr=>{
+      const ins=tr.querySelectorAll('input');
+      if(ins[0]&&ins[0].value) apps.push({id_articulo:artId,marca:ins[0].value,modelo:ins[1]?.value||'',anio_desde:parseInt(ins[2]?.value)||null,anio_hasta:parseInt(ins[3]?.value)||null,motor:ins[4]?.value||null,observacion:ins[5]?.value||null});
+    });
+    await _sb.from('aplicaciones').delete().eq('id_articulo',artId);
+    if(apps.length) await _sb.from('aplicaciones').insert(apps);
   }
   // guardar codigos proveedor
-  const provs=[];
-  document.querySelectorAll('#prov-tbody tr').forEach(tr=>{
-    const sel=tr.querySelector('select');
-    const ins=tr.querySelectorAll('input');
-    if(ins[0]&&ins[0].value) provs.push({codigo_articulo:cod,tipo:sel?.value||'PROVEEDOR',proveedor:ins[0].value,codigo_proveedor:ins[1]?.value||'',notas:ins[2]?.value||null});
-  });
-  if(provs.length){
-    await _sb.from('codigos_proveedor').delete().eq('codigo_articulo',cod);
-    await _sb.from('codigos_proveedor').insert(provs);
+  if(artId){
+    const provs=[];
+    document.querySelectorAll('#prov-tbody tr').forEach(tr=>{
+      const sel=tr.querySelector('select');
+      const ins=tr.querySelectorAll('input');
+      if(ins[0]&&ins[0].value) provs.push({id_articulo:artId,tipo:sel?.value||'PROVEEDOR',codigo_proveedor:ins[0].value,descripcion_proveedor:ins[1]?.value||null,observacion:ins[2]?.value||null});
+    });
+    await _sb.from('codigos_proveedor').delete().eq('id_articulo',artId);
+    if(provs.length) await _sb.from('codigos_proveedor').insert(provs);
   }
   closeModal('modal-ficha');
   toast(idExist?'Artículo actualizado':'Artículo agregado');
@@ -909,9 +924,9 @@ function addAppRow(ap){
 function addProvRow(c){
   document.getElementById('prov-tbody').innerHTML+=`<tr>
     <td><select style="min-width:110px"><option value="OEM"${c?.tipo==='OEM'?' selected':''}>OEM original</option><option value="PROVEEDOR"${c?.tipo==='PROVEEDOR'?' selected':''}>Código proveedor</option><option value="INTERNO"${c?.tipo==='INTERNO'?' selected':''}>Código interno</option></select></td>
-    <td><input value="${c?.proveedor||''}" placeholder="RSF, NACAM..." style="min-width:80px"></td>
-    <td><input value="${c?.codigo_proveedor||''}" placeholder="KYB-333831" style="min-width:90px"></td>
-    <td><input value="${c?.notas||''}" placeholder="Notas" style="min-width:70px"></td>
+    <td><input value="${c?.codigo_proveedor||''}" placeholder="KYB-333831" style="min-width:110px"></td>
+    <td><input value="${c?.descripcion_proveedor||''}" placeholder="Descripción proveedor" style="min-width:120px"></td>
+    <td><input value="${c?.observacion||''}" placeholder="Notas" style="min-width:70px"></td>
     <td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td>
   </tr>`;
 }
@@ -928,12 +943,12 @@ async function renderDashboard(){
   try{
     const [arts,clis,vents]=await Promise.all([
       _sb.from('articulos').select('id,stock,stock_minimo').is('deleted_at',null),
-      _sb.from('clientes').select('id,saldo_actual').is('deleted_at',null),
+      _sb.from('clientes').select('id,saldo_cuenta_corriente').is('deleted_at',null),
       _sb.from('ventas').select('id,total,estado,tipo_comprobante,created_at,cliente_id').order('created_at',{ascending:false}).limit(5)
     ]);
     document.getElementById('dash-arts').textContent=arts.data?.length||0;
     document.getElementById('dash-clis').textContent=clis.data?.length||0;
-    const deuda=clis.data?.reduce((s,c)=>s+(c.saldo_actual<0?Math.abs(c.saldo_actual):0),0)||0;
+    const deuda=clis.data?.reduce((s,c)=>s+(c.saldo_cuenta_corriente<0?Math.abs(c.saldo_cuenta_corriente):0),0)||0;
     document.getElementById('dash-deuda').textContent='$'+deuda.toLocaleString('es-AR');
     const criticos=arts.data?.filter(a=>a.stock<=(a.stock_minimo||3))||[];
     document.getElementById('dash-criticos').textContent=criticos.length?criticos.length+' con stock bajo':'';
@@ -968,17 +983,16 @@ async function renderAlertas(){
 
 // ── CUENTAS CORRIENTES ──
 async function renderCuentas(){
-  const {data}=await _sb.from('clientes').select('id,nombre,cuit,limite_credito,saldo_actual,condicion_iva').is('deleted_at',null).order('nombre');
-  const deuda=(data||[]).filter(c=>c.saldo_actual<0).reduce((s,c)=>s+Math.abs(c.saldo_actual),0);
+  const {data}=await _sb.from('clientes').select('id,nombre,cuit,limite_credito,saldo_cuenta_corriente,condicion_iva').is('deleted_at',null).order('nombre');
+  const deuda=(data||[]).filter(c=>c.saldo_cuenta_corriente<0).reduce((s,c)=>s+Math.abs(c.saldo_cuenta_corriente),0);
   document.getElementById('cc-resumen').textContent=`${(data||[]).length} clientes · Deuda total: $${deuda.toLocaleString('es-AR')}`;
   document.getElementById('cc-tabla').innerHTML=(data||[]).map(c=>`<tr>
     <td>${c.nombre}</td><td>${c.cuit||'—'}</td>
     <td>$${(c.limite_credito||0).toLocaleString('es-AR')}</td>
-    <td style="color:${c.saldo_actual<0?'var(--danger)':c.saldo_actual>0?'var(--success)':'var(--text2)'};font-weight:600">$${(c.saldo_actual||0).toLocaleString('es-AR')}</td>
-    <td><span class="badge ${c.saldo_actual===0?'b-ok':c.saldo_actual<0?'b-low':'b-info'}">${c.saldo_actual===0?'Al día':c.saldo_actual<0?'Debe':'A favor'}</span></td>
+    <td style="color:${c.saldo_cuenta_corriente<0?'var(--danger)':c.saldo_cuenta_corriente>0?'var(--success)':'var(--text2)'};font-weight:600">$${(c.saldo_cuenta_corriente||0).toLocaleString('es-AR')}</td>
+    <td><span class="badge ${c.saldo_cuenta_corriente===0?'b-ok':c.saldo_cuenta_corriente<0?'b-low':'b-info'}">${c.saldo_cuenta_corriente===0?'Al día':c.saldo_cuenta_corriente<0?'Debe':'A favor'}</span></td>
     <td><button class="btn sm" onclick="editarCliente('${c.id}')"><i class="ti ti-edit"></i></button></td>
   </tr>`).join('')||'<tr><td colspan="6" style="color:var(--text3);text-align:center">Sin clientes</td></tr>';
-  // actualizar select ventas
   const sel=document.getElementById('venta-cliente');
   if(sel) sel.innerHTML='<option value="">— Sin asignar —</option>'+(data||[]).map(c=>`<option value="${c.id}">${c.nombre}</option>`).join('');
 }
@@ -1006,14 +1020,14 @@ async function editarCliente(id){
   document.getElementById('cli-dir').value=c.direccion||'';
   document.getElementById('cli-iva').value=c.condicion_iva||'CF';
   document.getElementById('cli-limite').value=c.limite_credito||0;
-  document.getElementById('cli-saldo').value=c.saldo_actual||0;
+  document.getElementById('cli-saldo').value=c.saldo_cuenta_corriente||0;
   document.getElementById('btn-eliminar-cli').style.display='inline-flex';
   openModal('modal-cliente');
 }
 async function guardarCliente(){
   const nombre=document.getElementById('cli-nombre').value.trim();
   if(!nombre){toast('El nombre es requerido',true);return;}
-  const obj={nombre,cuit:document.getElementById('cli-cuit').value||null,telefono:document.getElementById('cli-tel').value||null,email:document.getElementById('cli-email').value||null,direccion:document.getElementById('cli-dir').value||null,condicion_iva:document.getElementById('cli-iva').value,limite_credito:parseFloat(document.getElementById('cli-limite').value)||0,saldo_actual:parseFloat(document.getElementById('cli-saldo').value)||0,activo:true};
+  const obj={nombre,cuit:document.getElementById('cli-cuit').value||null,telefono:document.getElementById('cli-tel').value||null,email:document.getElementById('cli-email').value||null,direccion:document.getElementById('cli-dir').value||null,condicion_iva:document.getElementById('cli-iva').value,limite_credito:parseFloat(document.getElementById('cli-limite').value)||0,saldo_cuenta_corriente:parseFloat(document.getElementById('cli-saldo').value)||0,activo:true};
   const idExist=document.getElementById('cli-id').value;
   const {error}=idExist?await _sb.from('clientes').update(obj).eq('id',idExist):await _sb.from('clientes').insert([obj]);
   if(error){toast('Error: '+error.message,true);return;}
@@ -1085,11 +1099,11 @@ async function confirmarVenta(){
   const pago=document.getElementById('venta-pago').value;
   const {data:v,error}=await _sb.from('ventas').insert([{cliente_id:cliId,tipo_comprobante:tipo,subtotal:total,total,estado:'COBRADO'}]).select().single();
   if(error){toast('Error: '+error.message,true);return;}
-  const detalles=ventaItems.map(it=>({venta_id:v.id,codigo_articulo:it.cod,cantidad:it.cant,precio_unitario:it.precio||0,subtotal:(it.precio||0)*(it.cant||1)}));
+  const detalles=ventaItems.map(it=>({venta_id:v.id,id_articulo:parseInt(it.id),cantidad:it.cant,precio_unitario:it.precio||0,subtotal:(it.precio||0)*(it.cant||1),descripcion_snapshot:it.desc,codigo_snapshot:it.cod}));
   await _sb.from('ventas_detalle').insert(detalles);
   if(pago==='CTA_CTE'&&cliId){
-    const {data:cli}=await _sb.from('clientes').select('saldo_actual').eq('id',cliId).single();
-    if(cli) await _sb.from('clientes').update({saldo_actual:(cli.saldo_actual||0)-total}).eq('id',cliId);
+    const {data:cli}=await _sb.from('clientes').select('saldo_cuenta_corriente').eq('id',cliId).single();
+    if(cli) await _sb.from('clientes').update({saldo_cuenta_corriente:(cli.saldo_cuenta_corriente||0)-total}).eq('id',cliId);
   }
   toast('Venta confirmada por $'+total.toLocaleString('es-AR'));
   ventaItems=[];renderVentaItems();
@@ -1345,4 +1359,3 @@ window.addEventListener('DOMContentLoaded',()=>{
 </script>
 </body>
 </html>
-
