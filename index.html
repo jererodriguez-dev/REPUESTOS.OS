@@ -869,14 +869,11 @@ async function editarArticulo(id){
   document.getElementById('ficha-barra').value=a.codigo_barra||'';
   document.getElementById('ficha-desc').value=a.descripcion||'';
   document.getElementById('ficha-rubro').value=a.rubro_id||'';
-  document.getElementById('ficha-pos').value=a.posicion||'';
-  document.getElementById('ficha-lado').value=a.lado||'';
   document.getElementById('ficha-marca-art').value=a.marca_articulo||'';
   document.getElementById('ficha-precio').value=a.precio_venta_actual||'';
   document.getElementById('ficha-costo').value=a.precio_costo_actual||'';
   document.getElementById('ficha-stock').value=a.stock||'';
   document.getElementById('ficha-stockmin').value=a.stock_minimo||'';
-  document.getElementById('ficha-obs').value=a.observacion||'';
   document.getElementById('ficha-ubic').value=a.ubicacion||'';
   document.getElementById('ficha-um').value=a.unidad_medida||'UN';
   document.getElementById('ficha-baseid').value=a.base_id||'';
@@ -925,7 +922,6 @@ async function guardarArticulo(){
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
     stock:parseInt(document.getElementById('ficha-stock').value)||0,
     stock_minimo:parseInt(document.getElementById('ficha-stockmin').value)||3,
-    observacion:document.getElementById('ficha-obs').value||null,
     ubicacion:document.getElementById('ficha-ubic').value||null,
     unidad_medida:document.getElementById('ficha-um').value||'UN',
     activo:true
