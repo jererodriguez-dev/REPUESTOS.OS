@@ -445,8 +445,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg"><label>Rubro</label><select id="ficha-rubro"><option value="">— Seleccionar —</option></select></div>
         <div class="fg"><label>Descripción</label><input id="ficha-desc" placeholder="Amortiguador del. KYB Corsa"></div>
         <div class="fg"><label>Marca artículo</label><input id="ficha-marca-art" placeholder="KYB, TRW..."></div>
-        <div class="fg"><label>Posición</label><select id="ficha-pos"><option value="">—</option><option>Delantero</option><option>Trasero</option><option>Universal</option></select></div>
-        <div class="fg"><label>Lado</label><select id="ficha-lado"><option value="">—</option><option>Derecho</option><option>Izquierdo</option><option>Ambos</option><option>N/A</option></select></div>
+        <div class="fg"><label>Base ID <span style="color:var(--text3);font-weight:400">(agrupa equivalentes)</span></label><input id="ficha-baseid" placeholder="AMORT-CORSA-DEL" onblur="verificarBaseId(this.value)"></div>
         <div class="fg"><label>Ubicación en depósito</label><input id="ficha-ubic" placeholder="Estante A3"></div>
         <div class="fg"><label>Unidad de medida</label><select id="ficha-um"><option value="UN">Unidad</option><option value="PAR">Par</option><option value="KIT">Kit</option><option value="LT">Litro</option></select></div>
       </div>
@@ -456,17 +455,31 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg"><label>Stock actual</label><input type="number" id="ficha-stock" placeholder="0"></div>
         <div class="fg"><label>Stock mínimo</label><input type="number" id="ficha-stockmin" placeholder="3"></div>
       </div>
-      <div class="fg"><label>Observaciones</label><textarea id="ficha-obs" rows="2" placeholder="MAS DUREZA (CARGA), par de torque 45Nm..."></textarea></div>
+      <div id="baseid-aviso" style="display:none;margin-bottom:10px;padding:10px 14px;background:rgba(64,144,224,.08);border:1px solid rgba(64,144,224,.2);border-radius:var(--r);font-size:12px">
+        <div style="font-weight:600;color:var(--info);margin-bottom:6px"><i class="ti ti-link"></i> <span id="baseid-aviso-txt"></span></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn sm primary" onclick="heredarDeBaseId()"><i class="ti ti-copy"></i>Heredar medidas y aplicaciones</button>
+          <button class="btn sm" onclick="document.getElementById('baseid-aviso').style.display='none'">Ignorar</button>
+        </div>
+      </div>
 
       <div class="sec-title">Datos técnicos <span style="color:var(--text3);font-size:9px" id="datos-tec-rubro-label"></span></div>
-      <div class="datos-tec-grid" id="datos-tec-container">
-        <div style="font-size:11px;color:var(--text3);grid-column:1/-1">Seleccioná un rubro para ver los datos técnicos</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="app-table">
+          <thead><tr><th>Campo</th><th>Valor</th><th>Observación</th><th></th></tr></thead>
+          <tbody id="tec-tbody"></tbody>
+        </table>
       </div>
+      <button class="btn sm" id="btn-add-tec"><i class="ti ti-plus"></i>Agregar dato técnico</button>
 
       <div class="sec-title">Medidas <span style="color:var(--text3);font-size:9px" id="medidas-rubro-label"></span></div>
-      <div class="medidas-grid" id="medidas-container">
-        <div style="font-size:11px;color:var(--text3);grid-column:1/-1">Seleccioná un rubro para ver las medidas correspondientes</div>
+      <div style="overflow-x:auto;margin-bottom:8px">
+        <table class="app-table">
+          <thead><tr><th>Nombre</th><th>Valor</th><th>Observación</th><th></th></tr></thead>
+          <tbody id="med-tbody"></tbody>
+        </table>
       </div>
+      <button class="btn sm" id="btn-add-med"><i class="ti ti-plus"></i>Agregar medida</button>
 
       <div class="sec-title">Aplicaciones (vehículos compatibles)</div>
       <div style="overflow-x:auto;margin-bottom:8px">
@@ -649,46 +662,106 @@ function goTo(id){
 function openModal(id){document.getElementById(id).classList.add('open');}
 function closeModal(id){document.getElementById(id).classList.remove('open');}
 
-// ── MEDIDAS DINÁMICAS ──
-// ── CONFIGURACIÓN DE CAMPOS POR RUBRO ──
-// datosTecPorRubro: campos tipo select/texto corto (Posición, Lado, etc.)
-// medidasPorRubro: campos numéricos con unidad
+// ── RUBROS ──
+// datosTecPorRubro y medidasPorRubro definen los campos sugeridos por rubro
+// Los datos reales se guardan en tablas datos_tecnicos y medidas
 const datosTecPorRubro={
-  'Amortiguadores':[
-    {l:'Posición',t:'select',ops:['','Delantero','Trasero','Universal']},
-    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos','N/A']},
-    {l:'Tope/Fuelle',t:'text',u:''},
-  ],
-  'Frenos - Pastillas':[
-    {l:'Posición',t:'select',ops:['','Delantero','Trasero']},
-    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos']},
-  ],
-  'Frenos - Discos':[
-    {l:'Posición',t:'select',ops:['','Delantero','Trasero']},
-    {l:'Ventilado',t:'select',ops:['','Sí','No']},
-  ],
-  'Rótulas y bujes':[
-    {l:'Posición',t:'select',ops:['','Superior','Inferior','Delantera','Trasera']},
-    {l:'Lado',t:'select',ops:['','Derecho','Izquierdo','Ambos']},
-  ],
-  'Filtros':[
-    {l:'Tipo',t:'select',ops:['','Aceite','Aire','Combustible','Habitáculo']},
-  ],
-  'Correas':[
-    {l:'Tipo',t:'select',ops:['','Distribución','Poly-V','Trapecial']},
-  ],
+  'Amortiguadores':[{l:'Posición',ops:['Delantero','Trasero','Universal']},{l:'Lado',ops:['Derecho','Izquierdo','Ambos','N/A']},{l:'Tope/Fuelle',ops:null}],
+  'Frenos - Pastillas':[{l:'Posición',ops:['Delantero','Trasero']},{l:'Lado',ops:['Derecho','Izquierdo','Ambos']}],
+  'Frenos - Discos':[{l:'Posición',ops:['Delantero','Trasero']},{l:'Ventilado',ops:['Sí','No']}],
+  'Rótulas y bujes':[{l:'Posición',ops:['Superior','Inferior','Delantera','Trasera']},{l:'Lado',ops:['Derecho','Izquierdo','Ambos']}],
+  'Filtros':[{l:'Tipo',ops:['Aceite','Aire','Combustible','Habitáculo']}],
+  'Correas':[{l:'Tipo',ops:['Distribución','Poly-V','Trapecial']}],
 };
 const medidasPorRubro={
-  'Amortiguadores':[{l:'Longitud abierta',u:'mm'},{l:'Longitud cerrada',u:'mm'},{l:'Carrera',u:'mm'},{l:'Anclaje superior',u:''},{l:'Anclaje inferior',u:''}],
-  'Frenos - Pastillas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Espesor nuevo',u:'mm'},{l:'Espesor mínimo',u:'mm'}],
-  'Frenos - Discos':[{l:'Diámetro exterior',u:'mm'},{l:'Diámetro interior',u:'mm'},{l:'Espesor nuevo',u:'mm'},{l:'Espesor mínimo',u:'mm'},{l:'N° orificios',u:''}],
-  'Rótulas y bujes':[{l:'Diámetro vástago',u:'mm'},{l:'Paso de rosca',u:''},{l:'Largo total',u:'mm'},{l:'Ángulo',u:'°'}],
-  'Filtros':[{l:'Diámetro exterior',u:'mm'},{l:'Alto',u:'mm'},{l:'Rosca interior',u:''},{l:'Presión bypass',u:'bar'}],
-  'Correas':[{l:'Largo',u:'mm'},{l:'Ancho',u:'mm'},{l:'Perfil',u:''},{l:'N° dientes',u:''}],
+  'Amortiguadores':['Longitud abierta (mm)','Longitud cerrada (mm)','Carrera (mm)','Anclaje superior','Anclaje inferior'],
+  'Frenos - Pastillas':['Largo (mm)','Ancho (mm)','Espesor nuevo (mm)','Espesor mínimo (mm)'],
+  'Frenos - Discos':['Diámetro exterior (mm)','Diámetro interior (mm)','Espesor nuevo (mm)','Espesor mínimo (mm)','N° orificios'],
+  'Rótulas y bujes':['Diámetro vástago (mm)','Paso de rosca','Largo total (mm)','Ángulo (°)'],
+  'Filtros':['Diámetro exterior (mm)','Alto (mm)','Rosca interior','Presión bypass (bar)'],
+  'Correas':['Largo (mm)','Ancho (mm)','Perfil','N° dientes'],
 };
-
-// rubrosDB: se carga desde Supabase [{id, nombre}]
 let rubrosDB=[];
+let _baseIdHeredado=null;
+
+function addTecRow(d){
+  const ops=d?.nombre_dato?(datosTecPorRubro[getRubroNombre()]||[]).find(f=>f.l===d.nombre_dato)?.ops:null;
+  const valInput=ops
+    ?`<select style="min-width:120px">${ops.map(o=>`<option value="${o}"${d?.valor===o?' selected':''}>${o}</option>`).join('')}</select>`
+    :`<input value="${d?.valor||''}" placeholder="valor" style="min-width:100px">`;
+  document.getElementById('tec-tbody').innerHTML+=`<tr>
+    <td><input value="${d?.nombre_dato||''}" placeholder="Posición, Lado..." style="min-width:120px"></td>
+    <td>${valInput}</td>
+    <td><input value="${d?.observacion||''}" placeholder="opcional" style="min-width:120px"></td>
+    <td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td>
+  </tr>`;
+}
+function addMedRow(d){
+  document.getElementById('med-tbody').innerHTML+=`<tr>
+    <td><input value="${d?.nombre_medida||''}" placeholder="Longitud abierta (mm)..." style="min-width:150px"></td>
+    <td><input value="${d?.valor||''}" placeholder="320" style="min-width:80px"></td>
+    <td><input value="${d?.observacion||''}" placeholder="opcional" style="min-width:120px"></td>
+    <td><i class="ti ti-trash" style="color:var(--danger);cursor:pointer" onclick="this.closest('tr').remove()"></i></td>
+  </tr>`;
+}
+
+function getRubroNombre(){
+  const sel=document.getElementById('ficha-rubro');
+  const txt=sel.options[sel.selectedIndex]?.text||'';
+  return (txt&&txt!=='— Seleccionar —')?txt:(rubrosDB.find(r=>r.id===sel.value)?.nombre||'');
+}
+
+function updateMedidas(){
+  const rubro=getRubroNombre();
+  document.getElementById('datos-tec-rubro-label').textContent=rubro?'· '+rubro:'';
+  document.getElementById('medidas-rubro-label').textContent=rubro?'· '+rubro:'';
+  // Solo pre-poblar si las tablas están vacías
+  if(!document.getElementById('tec-tbody').children.length){
+    const tecs=datosTecPorRubro[rubro]||[];
+    tecs.forEach(f=>addTecRow({nombre_dato:f.l}));
+  }
+  if(!document.getElementById('med-tbody').children.length){
+    const meds=medidasPorRubro[rubro]||[];
+    meds.forEach(m=>addMedRow({nombre_medida:m}));
+  }
+}
+
+// ── BASE ID ──
+let _baseIdData=null;
+async function verificarBaseId(val){
+  const aviso=document.getElementById('baseid-aviso');
+  if(!val?.trim()){aviso.style.display='none';_baseIdData=null;return;}
+  const artId=document.getElementById('ficha-id').value;
+  let q=_sb.from('articulos').select('id,codigo_articulo,descripcion').eq('base_id',val).is('deleted_at',null);
+  if(artId) q=q.neq('id',artId);
+  const {data}=await q.limit(1).single();
+  if(data){
+    _baseIdData=data;
+    document.getElementById('baseid-aviso-txt').textContent=`Ya existe: ${data.codigo_articulo} — ${data.descripcion}. ¿Heredar medidas y aplicaciones?`;
+    aviso.style.display='block';
+  } else {
+    aviso.style.display='none';
+    _baseIdData=null;
+  }
+}
+async function heredarDeBaseId(){
+  if(!_baseIdData) return;
+  // Heredar datos técnicos
+  const {data:tecs}=await _sb.from('datos_tecnicos').select('*').eq('id_articulo',_baseIdData.id);
+  document.getElementById('tec-tbody').innerHTML='';
+  (tecs||[]).forEach(t=>addTecRow(t));
+  // Heredar medidas
+  const {data:meds}=await _sb.from('medidas').select('*').eq('id_articulo',_baseIdData.id);
+  document.getElementById('med-tbody').innerHTML='';
+  (meds||[]).forEach(m=>addMedRow(m));
+  // Heredar aplicaciones
+  const {data:apps}=await _sb.from('aplicaciones').select('*').eq('id_articulo',_baseIdData.id);
+  document.getElementById('apps-tbody').innerHTML='';
+  (apps||[]).forEach(ap=>addAppRow(ap));
+  document.getElementById('baseid-aviso').style.display='none';
+  toast('Medidas y aplicaciones heredadas de '+_baseIdData.codigo_articulo);
+}
+
 
 function updateMedidas(){
   const sel=document.getElementById('ficha-rubro');
@@ -769,16 +842,17 @@ async function renderCatalogo(){
 function abrirNuevoArticulo(){
   document.getElementById('ficha-title').textContent='Nuevo artículo';
   document.getElementById('ficha-id').value='';
-  ['ficha-cod','ficha-barra','ficha-desc','ficha-marca-art','ficha-obs','ficha-ubic'].forEach(id=>document.getElementById(id).value='');
+  ['ficha-cod','ficha-barra','ficha-desc','ficha-marca-art','ficha-ubic','ficha-baseid'].forEach(id=>document.getElementById(id).value='');
   ['ficha-precio','ficha-costo','ficha-stock','ficha-stockmin'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('ficha-rubro').value='';
-  document.getElementById('ficha-pos').value='';
-  document.getElementById('ficha-lado').value='';
   document.getElementById('ficha-um').value='UN';
+  document.getElementById('tec-tbody').innerHTML='';
+  document.getElementById('med-tbody').innerHTML='';
   document.getElementById('apps-tbody').innerHTML='';
   document.getElementById('prov-tbody').innerHTML='';
   document.getElementById('equiv-tbody').innerHTML='';
   document.getElementById('sust-tbody').innerHTML='';
+  document.getElementById('baseid-aviso').style.display='none';
   document.getElementById('ficha-hist-precios').innerHTML='<div style="font-size:11px;color:var(--text3)">Sin historial</div>';
   document.getElementById('btn-eliminar-art').style.display='none';
   updateMedidas();
@@ -805,15 +879,19 @@ async function editarArticulo(id){
   document.getElementById('ficha-obs').value=a.observacion||'';
   document.getElementById('ficha-ubic').value=a.ubicacion||'';
   document.getElementById('ficha-um').value=a.unidad_medida||'UN';
+  document.getElementById('ficha-baseid').value=a.base_id||'';
+  document.getElementById('baseid-aviso').style.display='none';
+  _baseIdData=null;
   updateMedidas();
-  // medidas desde tabla medidas
+  // datos tecnicos
+  document.getElementById('tec-tbody').innerHTML='';
+  const {data:tecs}=await _sb.from('datos_tecnicos').select('*').eq('id_articulo',a.id);
+  (tecs||[]).forEach(t=>addTecRow(t));
+  if(!(tecs||[]).length) updateMedidas();
+  // medidas
+  document.getElementById('med-tbody').innerHTML='';
   const {data:meds}=await _sb.from('medidas').select('*').eq('id_articulo',a.id);
-  (meds||[]).forEach(m=>{
-    const tecInp=document.querySelector(`[data-tec="${m.nombre_medida}"]`);
-    const medInp=document.querySelector(`[data-medida="${m.nombre_medida}"]`);
-    if(tecInp) tecInp.value=m.valor;
-    else if(medInp) medInp.value=m.valor;
-  });
+  (meds||[]).forEach(m=>addMedRow(m));
   // aplicaciones
   document.getElementById('apps-tbody').innerHTML='';
   const {data:apps}=await _sb.from('aplicaciones').select('*').eq('id_articulo',a.id);
@@ -841,6 +919,7 @@ async function guardarArticulo(){
     codigo_barra:document.getElementById('ficha-barra').value||null,
     descripcion:desc,
     rubro_id:document.getElementById('ficha-rubro').value||null,
+    base_id:document.getElementById('ficha-baseid').value||null,
     marca_articulo:document.getElementById('ficha-marca-art').value||null,
     precio_venta_actual:precio,
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
@@ -865,17 +944,29 @@ async function guardarArticulo(){
   if(precio&&artId){
     await _sb.from('historial_precios').insert([{id_articulo:artId,precio_venta:precio,precio_costo:obj.precio_costo_actual}]);
   }
-  // guardar medidas en tabla medidas
+  // guardar datos técnicos
   if(artId){
-    const medidasRows=[];
-    document.querySelectorAll('#datos-tec-container [data-tec]').forEach(inp=>{
-      if(inp.value) medidasRows.push({id_articulo:artId,nombre_medida:inp.getAttribute('data-tec'),valor:inp.value});
+    const tecRows=[];
+    document.querySelectorAll('#tec-tbody tr').forEach(tr=>{
+      const ins=tr.querySelectorAll('input,select');
+      const nombre=ins[0]?.value?.trim();
+      const valor=ins[1]?.value?.trim();
+      if(nombre&&valor) tecRows.push({id_articulo:artId,nombre_dato:nombre,valor,observacion:ins[2]?.value||null});
     });
-    document.querySelectorAll('#medidas-container [data-medida]').forEach(inp=>{
-      if(inp.value) medidasRows.push({id_articulo:artId,nombre_medida:inp.getAttribute('data-medida'),valor:inp.value});
+    await _sb.from('datos_tecnicos').delete().eq('id_articulo',artId);
+    if(tecRows.length) await _sb.from('datos_tecnicos').insert(tecRows);
+  }
+  // guardar medidas
+  if(artId){
+    const medRows=[];
+    document.querySelectorAll('#med-tbody tr').forEach(tr=>{
+      const ins=tr.querySelectorAll('input');
+      const nombre=ins[0]?.value?.trim();
+      const valor=ins[1]?.value?.trim();
+      if(nombre&&valor) medRows.push({id_articulo:artId,nombre_medida:nombre,valor,observacion:ins[2]?.value||null});
     });
     await _sb.from('medidas').delete().eq('id_articulo',artId);
-    if(medidasRows.length) await _sb.from('medidas').insert(medidasRows);
+    if(medRows.length) await _sb.from('medidas').insert(medRows);
   }
   // guardar aplicaciones
   if(artId){
@@ -1283,6 +1374,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-cancelar-ficha').addEventListener('click',()=>closeModal('modal-ficha'));
   document.getElementById('btn-add-app').addEventListener('click',()=>addAppRow());
   document.getElementById('btn-add-prov').addEventListener('click',()=>addProvRow());
+  document.getElementById('btn-add-tec').addEventListener('click',()=>addTecRow(null));
+  document.getElementById('btn-add-med').addEventListener('click',()=>addMedRow(null));
   document.getElementById('ficha-rubro').addEventListener('change',updateMedidas);
 
   // equiv tabs
