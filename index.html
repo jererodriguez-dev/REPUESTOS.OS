@@ -204,14 +204,6 @@ tr:hover td{background:var(--bg3);color:var(--text)}
 <div id="main">
   <div class="topbar">
     <div class="topbar-title" id="page-title">Dashboard</div>
-    <div class="topbar-right">
-      <div style="position:relative">
-        <i class="ti ti-search" style="position:absolute;left:9px;top:50%;transform:translateY(-50%);color:var(--text3);font-size:14px"></i>
-        <input type="text" id="global-search" placeholder="Buscar artículo, cliente..." style="padding-left:30px;width:240px">
-      </div>
-      <button class="btn" id="btn-tema"><i class="ti ti-palette"></i>Tema</button>
-      <button class="btn primary" id="btn-nuevo-art"><i class="ti ti-plus"></i>Nuevo artículo</button>
-    </div>
   </div>
 
   <!-- DASHBOARD -->
@@ -1361,7 +1353,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('open');}));
 
   // ficha
-  document.getElementById('btn-nuevo-art').addEventListener('click',abrirNuevoArticulo);
   document.getElementById('btn-nuevo-art2').addEventListener('click',abrirNuevoArticulo);
   document.getElementById('btn-admin-nuevo-art').addEventListener('click',abrirNuevoArticulo);
   document.getElementById('btn-guardar-art').addEventListener('click',guardarArticulo);
@@ -1428,20 +1419,6 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-cfg-guardar').addEventListener('click',guardarConfig);
   document.querySelectorAll('[data-acc]').forEach(el=>el.addEventListener('click',()=>setAcc(el.getAttribute('data-acc'),el.getAttribute('data-acc2'))));
   document.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click',()=>setMode(el.getAttribute('data-mode'))));
-
-  // tema panel
-  document.getElementById('btn-tema').addEventListener('click',()=>{
-    const p=document.getElementById('theme-panel');
-    p.style.display=p.style.display==='none'?'block':'none';
-  });
-
-  // global search
-  document.getElementById('global-search').addEventListener('input',e=>{
-    if(document.getElementById('page-catalogo').classList.contains('active')){
-      document.getElementById('f-keyword').value=e.target.value;
-      renderCatalogo();
-    }
-  });
 
   initAuth();
 });
