@@ -703,21 +703,6 @@ function getRubroNombre(){
   return (txt&&txt!=='— Seleccionar —')?txt:(rubrosDB.find(r=>r.id===sel.value)?.nombre||'');
 }
 
-function updateMedidas(){
-  const rubro=getRubroNombre();
-  document.getElementById('datos-tec-rubro-label').textContent=rubro?'· '+rubro:'';
-  document.getElementById('medidas-rubro-label').textContent=rubro?'· '+rubro:'';
-  // Solo pre-poblar si las tablas están vacías
-  if(!document.getElementById('tec-tbody').children.length){
-    const tecs=datosTecPorRubro[rubro]||[];
-    tecs.forEach(f=>addTecRow({nombre_dato:f.l}));
-  }
-  if(!document.getElementById('med-tbody').children.length){
-    const meds=medidasPorRubro[rubro]||[];
-    meds.forEach(m=>addMedRow({nombre_medida:m}));
-  }
-}
-
 // ── BASE ID ──
 let _baseIdData=null;
 async function verificarBaseId(val){
