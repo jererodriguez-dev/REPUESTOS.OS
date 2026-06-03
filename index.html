@@ -742,40 +742,28 @@ async function heredarDeBaseId(){
 
 function updateMedidas(){
   const sel=document.getElementById('ficha-rubro');
+  if(!sel) return;
   const selText=sel.options[sel.selectedIndex]?.text||'';
-  // Si el texto es el placeholder o vacío, buscar por UUID en rubrosDB
   const uuid=sel.value;
   const rubroNombre=(selText&&selText!=='— Seleccionar —'&&selText!=='')
     ? selText
     : (rubrosDB.find(r=>r.id===uuid)?.nombre||'');
-  const cont=document.getElementById('medidas-container');
-  const lbl=document.getElementById('medidas-rubro-label');
-  const contTec=document.getElementById('datos-tec-container');
+
   const lblTec=document.getElementById('datos-tec-rubro-label');
+  const lblMed=document.getElementById('medidas-rubro-label');
+  const tecTbody=document.getElementById('tec-tbody');
+  const medTbody=document.getElementById('med-tbody');
 
-  // Datos técnicos
-  const tecFields=datosTecPorRubro[rubroNombre];
-  if(!tecFields){
-    contTec.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">Sin datos técnicos para este rubro</div>';
-    lblTec.textContent='';
-  } else {
-    lblTec.textContent='· '+rubroNombre;
-    contTec.innerHTML=tecFields.map(f=>{
-      if(f.t==='select'){
-        return `<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}</label><select data-tec="${f.l}">${f.ops.map(o=>`<option value="${o}">${o||'—'}</option>`).join('')}</select></div>`;
-      }
-      return `<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-tec="${f.l}" placeholder="${f.u||''}"></div>`;
-    }).join('');
+  if(lblTec) lblTec.textContent=rubroNombre?'· '+rubroNombre:'';
+  if(lblMed) lblMed.textContent=rubroNombre?'· '+rubroNombre:'';
+
+  if(tecTbody&&!tecTbody.children.length){
+    const tecs=datosTecPorRubro[rubroNombre]||[];
+    tecs.forEach(f=>addTecRow({nombre_dato:f.l}));
   }
-
-  // Medidas
-  const fields=medidasPorRubro[rubroNombre];
-  if(!fields){
-    cont.innerHTML='<div style="font-size:11px;color:var(--text3);grid-column:1/-1">Sin medidas estándar para este rubro</div>';
-    lbl.textContent='';
-  } else {
-    lbl.textContent='· '+rubroNombre;
-    cont.innerHTML=fields.map(f=>`<div style="display:flex;flex-direction:column;gap:3px"><label>${f.l}${f.u?' ('+f.u+')':''}</label><input type="text" data-medida="${f.l}" placeholder="${f.u}"></div>`).join('');
+  if(medTbody&&!medTbody.children.length){
+    const meds=medidasPorRubro[rubroNombre]||[];
+    meds.forEach(m=>addMedRow({nombre_medida:typeof m==='string'?m:m.l}));
   }
 }
 
