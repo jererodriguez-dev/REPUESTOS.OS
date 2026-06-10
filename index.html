@@ -6,6 +6,7 @@
 <title>RepuestOS</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
@@ -345,6 +346,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="tab" data-admin="cli">Clientes</div>
       <div class="tab" data-admin="ven">Ventas</div>
       <div class="tab" data-admin="rubros">Rubros</div>
+      <div class="tab" data-admin="imp">Importar precios</div>
+      <div class="tab" data-admin="seg">Seguridad</div>
     </div>
     <div id="admin-art-panel">
       <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center">
@@ -382,6 +385,68 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="card" style="padding:0;overflow:hidden">
         <table><thead><tr><th>Nombre</th><th>Datos técnicos</th><th>Medidas</th><th></th></tr></thead>
         <tbody id="admin-rubros-tabla"></tbody></table>
+      </div>
+    </div>
+    <div id="admin-imp-panel" style="display:none">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-file-spreadsheet"></i> Importar precios de venta</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
+          Subí un Excel (.xlsx) o CSV con los códigos y los nuevos precios de venta.
+          El archivo se previsualiza antes de aplicar — <b style="color:var(--text)">nada se modifica hasta que confirmes</b>.
+          El match es por <b style="color:var(--text)">código de artículo</b>; los que no coincidan se saltean.
+        </p>
+        <label class="btn sm primary" style="cursor:pointer">
+          <i class="ti ti-upload"></i> Elegir archivo
+          <input type="file" id="imp-file" accept=".xlsx,.xls,.csv" style="display:none">
+        </label>
+        <span id="imp-filename" style="font-size:11px;color:var(--text2);margin-left:10px"></span>
+      </div>
+
+      <div class="card" id="imp-mapeo" style="display:none">
+        <div class="card-title">Mapeo de columnas</div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+          <div class="fg" style="margin-bottom:0;min-width:160px"><label>Columna de código</label><select id="imp-col-codigo"></select></div>
+          <div class="fg" style="margin-bottom:0;min-width:160px"><label>Columna de precio venta</label><select id="imp-col-precio"></select></div>
+          <div class="fg" style="margin-bottom:0;max-width:110px"><label>Ajuste % (opcional)</label><input type="number" id="imp-ajuste" value="0" step="0.1"></div>
+          <div class="fg" style="margin-bottom:0;max-width:130px"><label>Redondear a</label>
+            <select id="imp-redondeo">
+              <option value="0">Sin redondeo</option>
+              <option value="1">$1</option>
+              <option value="10">$10</option>
+              <option value="100">$100</option>
+            </select>
+          </div>
+          <button class="btn sm primary" id="imp-btn-preview"><i class="ti ti-eye"></i> Previsualizar</button>
+        </div>
+      </div>
+
+      <div class="card" id="imp-preview-wrap" style="display:none;padding:0;overflow:hidden">
+        <div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <div id="imp-resumen" style="font-size:12px;color:var(--text2)"></div>
+          <button class="btn sm success" id="imp-btn-aplicar"><i class="ti ti-check"></i> Aplicar cambios</button>
+        </div>
+        <div style="max-height:440px;overflow:auto">
+          <table class="app-table">
+            <thead><tr><th>Código</th><th>Descripción</th><th>Precio actual</th><th>Precio nuevo</th><th>Var.</th><th>Estado</th></tr></thead>
+            <tbody id="imp-preview-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div id="admin-seg-panel" style="display:none">
+      <div class="card" style="max-width:440px">
+        <div class="card-title"><i class="ti ti-lock"></i> PIN de acceso a Administrar datos</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
+          Protege esta sección en terminales compartidas. Es un <b style="color:var(--text)">disuasivo simple</b>, no seguridad fuerte
+          (eso llega con login + roles). Se pide una vez por sesión.
+        </p>
+        <div class="fg"><label>PIN nuevo (mín. 4 dígitos)</label><input type="password" id="seg-pin1" inputmode="numeric" autocomplete="new-password"></div>
+        <div class="fg"><label>Repetir PIN</label><input type="password" id="seg-pin2" inputmode="numeric" autocomplete="new-password"></div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn sm primary" id="btn-seg-guardar"><i class="ti ti-device-floppy"></i> Guardar PIN</button>
+          <button class="btn sm" id="btn-seg-bloquear"><i class="ti ti-lock"></i> Bloquear acceso ahora</button>
+          <span id="seg-estado" style="font-size:11px"></span>
+        </div>
       </div>
     </div>
   </div>
@@ -584,6 +649,61 @@ tr:hover td{background:var(--bg3);color:var(--text)}
   </div>
 </div>
 
+<!-- MODAL PIN ACCESO ADMIN -->
+<div class="modal-bg" id="modal-pin">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-lock"></i> Acceso restringido</div>
+      <button class="btn sm" onclick="closeModal('modal-pin')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Ingresá el PIN para acceder a Administrar datos.</p>
+      <input type="password" id="pin-input" inputmode="numeric" placeholder="••••" autocomplete="off" style="text-align:center;letter-spacing:6px;font-size:18px">
+      <p id="pin-error" style="display:none;color:var(--danger);font-size:11px;margin-top:8px"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-pin')">Cancelar</button>
+        <button class="btn primary" id="btn-pin-ok"><i class="ti ti-lock-open"></i> Ingresar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR ELIMINACIÓN ARTÍCULO -->
+<div class="modal-bg" id="modal-confirmar-articulo">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Eliminar artículo</div>
+      <button class="btn sm" onclick="closeModal('modal-confirmar-articulo')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;margin-bottom:6px">¿Eliminar <strong id="confirm-art-nombre"></strong>?</p>
+      <p style="font-size:11px;color:var(--text3)">Se marca como eliminado (soft delete); se puede recuperar desde Supabase.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-confirmar-articulo')">Cancelar</button>
+        <button class="btn danger" id="btn-confirmar-eliminar-art"><i class="ti ti-trash"></i> Sí, eliminar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR GUARDADO DE ARTÍCULO -->
+<div class="modal-bg" id="modal-confirmar-guardar">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-edit"></i> Confirmar cambios</div>
+      <button class="btn sm" onclick="closeModal('modal-confirmar-guardar')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:10px">Se van a guardar estos cambios:</p>
+      <div id="confirm-guardar-lista" style="font-size:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-confirmar-guardar')">Cancelar</button>
+        <button class="btn primary" id="btn-confirmar-guardar"><i class="ti ti-check"></i> Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <div id="theme-panel" style="display:none;position:fixed;top:54px;right:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:14px;width:180px;z-index:300">
   <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Acento</div>
@@ -633,6 +753,7 @@ function cargarTema(){
 // ── NAV ──
 const pageTitles={dashboard:'Dashboard',catalogo:'Catálogo de artículos',top:'Top vendidos',alertas:'Alertas de stock',cuentas:'Cuentas corrientes',ventas:'Ventas y remitos',proveedores:'Proveedores',admin:'Administrar datos',config:'Configuración'};
 function goTo(id){
+  if(id==='admin' && !puedeAccederAdmin()){ gateAdmin(); return; }
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
   const pg=document.getElementById('page-'+id);
@@ -1014,8 +1135,8 @@ async function renderDashboard(){
 
 // ── TOP VENDIDOS ──
 async function renderTop(){
-  const {data}=await _sb.from('ventas_detalle').select('codigo_articulo,cantidad').limit(500);
-  const c={};(data||[]).forEach(d=>{c[d.codigo_articulo]=(c[d.codigo_articulo]||0)+d.cantidad});
+  const {data}=await _sb.from('ventas_detalle').select('codigo_snapshot,cantidad').limit(500);
+  const c={};(data||[]).forEach(d=>{c[d.codigo_snapshot]=(c[d.codigo_snapshot]||0)+d.cantidad});
   const top=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const maxU=top[0]?.[1]||1;
   document.getElementById('top-list').innerHTML=top.map(([cod,u],i)=>`<div class="top-row"><div class="rank ${i===0?'r1':i===1?'r2':i===2?'r3':''}">${i+1}</div><div style="flex:1"><div style="font-size:12px;font-weight:500">${cod}</div><div class="top-bar-fill"><div class="top-bar-inner" style="width:${Math.round(u/maxU*100)}%"></div></div></div><div style="font-size:11px;color:var(--text2);min-width:50px;text-align:right">${u} u.</div></div>`).join('')||'<div style="color:var(--text3);font-size:11px">Sin datos de ventas aún</div>';
@@ -1172,34 +1293,136 @@ async function renderProveedores(){
 }
 
 // ── ADMIN ──
+// Tabla Artículos: filas en SOLO LECTURA; el lápiz activa edición inline solo en esa fila.
+let _adminArtCache={};
+function _escAttr(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function _money(n){return '$'+Number(n||0).toLocaleString('es-AR');}
+
+function filaArtLectura(a){
+  return `<tr id="art-row-${a.id}">
+    <td>${_escAttr(a.codigo_articulo)}</td>
+    <td>${_escAttr(a.descripcion)}</td>
+    <td>${_money(a.precio_venta_actual)}</td>
+    <td>${_money(a.precio_costo_actual)}</td>
+    <td>${a.stock||0}</td>
+    <td>${a.stock_minimo??3}</td>
+    <td style="white-space:nowrap">
+      <button class="btn sm" title="Edición rápida" onclick="editarFila('${a.id}')"><i class="ti ti-edit"></i></button>
+      <button class="btn sm" title="Ficha completa" onclick="editarArticulo('${a.id}')"><i class="ti ti-list-details"></i></button>
+      <button class="btn sm danger" title="Eliminar" onclick="pedirEliminarArt('${a.id}')"><i class="ti ti-trash"></i></button>
+    </td>
+  </tr>`;
+}
+function filaArtEdicion(a){
+  return `<tr id="art-row-${a.id}">
+    <td><input id="ea-cod-${a.id}" value="${_escAttr(a.codigo_articulo)}" style="width:90px"></td>
+    <td><input id="ea-desc-${a.id}" value="${_escAttr(a.descripcion)}" style="width:200px"></td>
+    <td><input id="ea-pv-${a.id}" type="number" value="${a.precio_venta_actual||0}" style="width:80px"></td>
+    <td><input id="ea-pc-${a.id}" type="number" value="${a.precio_costo_actual||0}" style="width:75px"></td>
+    <td style="color:var(--text3)" title="El stock se sincroniza por movimientos; no se edita acá">${a.stock||0}</td>
+    <td><input id="ea-min-${a.id}" type="number" value="${a.stock_minimo??3}" style="width:50px"></td>
+    <td style="white-space:nowrap">
+      <button class="btn sm success" title="Guardar" onclick="guardarFila('${a.id}')"><i class="ti ti-check"></i></button>
+      <button class="btn sm" title="Cancelar" onclick="cancelarFila('${a.id}')"><i class="ti ti-x"></i></button>
+    </td>
+  </tr>`;
+}
 async function renderAdminArt(){
   const kw=(document.getElementById('admin-search-art')?.value||'').toLowerCase();
   const {data}=await _sb.from('articulos').select('id,codigo_articulo,descripcion,precio_venta_actual,precio_costo_actual,stock,stock_minimo').is('deleted_at',null).order('codigo_articulo');
   const items=(data||[]).filter(a=>!kw||a.descripcion?.toLowerCase().includes(kw)||a.codigo_articulo?.toLowerCase().includes(kw));
-  document.getElementById('admin-art-tabla').innerHTML=items.map(a=>`<tr>
-    <td><input value="${a.codigo_articulo}" style="width:90px" onchange="updateArt('${a.id}','codigo_articulo',this.value)"></td>
-    <td><input value="${a.descripcion}" style="width:200px" onchange="updateArt('${a.id}','descripcion',this.value)"></td>
-    <td><input type="number" value="${a.precio_venta_actual||0}" style="width:80px" onchange="updateArt('${a.id}','precio_venta_actual',parseFloat(this.value))"></td>
-    <td><input type="number" value="${a.precio_costo_actual||0}" style="width:75px" onchange="updateArt('${a.id}','precio_costo_actual',parseFloat(this.value))"></td>
-    <td><input type="number" value="${a.stock||0}" style="width:55px" onchange="updateArt('${a.id}','stock',parseInt(this.value))"></td>
-    <td><input type="number" value="${a.stock_minimo||3}" style="width:50px" onchange="updateArt('${a.id}','stock_minimo',parseInt(this.value))"></td>
-    <td><button class="btn sm" onclick="editarArticulo('${a.id}')"><i class="ti ti-edit"></i></button> <button class="btn sm danger" onclick="eliminarDirecto('${a.id}')"><i class="ti ti-trash"></i></button></td>
-  </tr>`).join('')||'<tr><td colspan="7" style="color:var(--text3);text-align:center">Sin artículos</td></tr>';
+  _adminArtCache={};
+  items.forEach(a=>_adminArtCache[a.id]=a);
+  document.getElementById('admin-art-tabla').innerHTML=items.map(filaArtLectura).join('')||'<tr><td colspan="7" style="color:var(--text3);text-align:center">Sin artículos</td></tr>';
 }
-async function updateArt(id,field,val){await _sb.from('articulos').update({[field]:val}).eq('id',id);}
-async function eliminarDirecto(id){
-  if(!confirm('¿Eliminar?')) return;
-  await _sb.from('articulos').update({deleted_at:new Date().toISOString()}).eq('id',id);
-  renderAdminArt(); toast('Eliminado');
+function editarFila(id){
+  const a=_adminArtCache[id]; if(!a) return;
+  document.getElementById('art-row-'+id).outerHTML=filaArtEdicion(a);
+  document.getElementById('ea-cod-'+id)?.focus();
+}
+function cancelarFila(id){
+  const a=_adminArtCache[id]; if(!a) return;
+  document.getElementById('art-row-'+id).outerHTML=filaArtLectura(a);
+}
+// Campos editables inline, con etiqueta y formato para el modal de confirmación
+const CAMPOS_ART=[
+  {k:'codigo_articulo', label:'Código'},
+  {k:'descripcion', label:'Descripción'},
+  {k:'precio_venta_actual', label:'Precio venta', money:true},
+  {k:'precio_costo_actual', label:'Costo', money:true},
+  {k:'stock_minimo', label:'Stock mínimo'}
+];
+let _filaGuardarPendiente=null;
+
+async function guardarFila(id){
+  const a=_adminArtCache[id]; if(!a) return;
+  const g=k=>document.getElementById(k+id);
+  const obj={
+    codigo_articulo:g('ea-cod-').value.trim(),
+    descripcion:g('ea-desc-').value.trim(),
+    precio_venta_actual:parseFloat(g('ea-pv-').value)||0,
+    precio_costo_actual:parseFloat(g('ea-pc-').value)||0,
+    stock_minimo:parseInt(g('ea-min-').value)||0
+  };
+  if(!obj.codigo_articulo||!obj.descripcion){toast('Código y descripción son obligatorios',true);return;}
+  // calcular qué campos cambian (antes → después)
+  const cambios=CAMPOS_ART.filter(c=>{
+    const esNum=c.money||c.k==='stock_minimo';
+    return esNum ? Number(a[c.k]||0)!==Number(obj[c.k]||0)
+                 : String(a[c.k]??'').trim()!==String(obj[c.k]??'');
+  }).map(c=>{
+    const esNum=c.money||c.k==='stock_minimo';
+    const fmt=v=>c.money?_money(v):(esNum?String(Number(v||0)):_escAttr(v));
+    return {label:c.label, antes:fmt(a[c.k]), despues:fmt(obj[c.k])};
+  });
+  if(!cambios.length){ // sin cambios → no pide confirmación, solo vuelve a lectura
+    document.getElementById('art-row-'+id).outerHTML=filaArtLectura(a);
+    toast('Sin cambios');
+    return;
+  }
+  _filaGuardarPendiente={id,obj};
+  document.getElementById('confirm-guardar-lista').innerHTML=cambios.map(c=>
+    `<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:1px solid var(--border)">
+       <span style="color:var(--text3)">${c.label}</span>
+       <span><span style="color:var(--text3);text-decoration:line-through">${c.antes}</span> <i class="ti ti-arrow-right" style="font-size:11px;color:var(--text3)"></i> <strong style="color:var(--text)">${c.despues}</strong></span>
+     </div>`).join('');
+  openModal('modal-confirmar-guardar');
+}
+async function confirmarGuardarFila(){
+  if(!_filaGuardarPendiente) return;
+  const {id,obj}=_filaGuardarPendiente;
+  const a=_adminArtCache[id]; if(!a) return;
+  const {error}=await _sb.from('articulos').update(obj).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  closeModal('modal-confirmar-guardar');
+  _filaGuardarPendiente=null;
+  _adminArtCache[id]={...a,...obj};
+  document.getElementById('art-row-'+id).outerHTML=filaArtLectura(_adminArtCache[id]);
+  toast('Artículo actualizado');
+}
+let _artEliminarId=null;
+function pedirEliminarArt(id){
+  const a=_adminArtCache[id]; if(!a) return;
+  _artEliminarId=id;
+  document.getElementById('confirm-art-nombre').textContent=`${a.codigo_articulo} — ${a.descripcion}`;
+  openModal('modal-confirmar-articulo');
+}
+async function confirmarEliminarArt(){
+  if(!_artEliminarId) return;
+  const {error}=await _sb.from('articulos').update({deleted_at:new Date().toISOString()}).eq('id',_artEliminarId);
+  closeModal('modal-confirmar-articulo');
+  _artEliminarId=null;
+  if(error){toast('Error al eliminar',true);return;}
+  renderAdminArt(); toast('Artículo eliminado');
 }
 async function renderAdminCli(){
   const kw=(document.getElementById('admin-search-cli')?.value||'').toLowerCase();
-  const {data}=await _sb.from('clientes').select('id,nombre,cuit,telefono,limite_credito,saldo_actual').is('deleted_at',null).order('nombre');
+  const {data}=await _sb.from('clientes').select('id,nombre,cuit,telefono,limite_credito,saldo_cuenta_corriente').is('deleted_at',null).order('nombre');
   const items=(data||[]).filter(c=>!kw||c.nombre?.toLowerCase().includes(kw));
   document.getElementById('admin-cli-tabla').innerHTML=items.map(c=>`<tr>
     <td>${c.nombre}</td><td>${c.cuit||'—'}</td><td>${c.telefono||'—'}</td>
     <td>$${(c.limite_credito||0).toLocaleString('es-AR')}</td>
-    <td style="color:${c.saldo_actual<0?'var(--danger)':'var(--success)'}">$${(c.saldo_actual||0).toLocaleString('es-AR')}</td>
+    <td style="color:${c.saldo_cuenta_corriente<0?'var(--danger)':'var(--success)'}">$${(c.saldo_cuenta_corriente||0).toLocaleString('es-AR')}</td>
     <td><button class="btn sm" onclick="editarCliente('${c.id}')"><i class="ti ti-edit"></i></button></td>
   </tr>`).join('')||'<tr><td colspan="6" style="color:var(--text3);text-align:center">Sin clientes</td></tr>';
 }
@@ -1271,6 +1494,226 @@ async function confirmarNuevoRubro(){
   renderAdminRubros(); cargarRubrosSelect(); toast('Rubro agregado');
 }
 
+// ── IMPORTADOR DE PRECIOS ──
+// Flujo: subir archivo → mapear columnas → previsualizar → aplicar.
+// Solo actualiza precio_venta_actual, matcheando por codigo_articulo. Nada se aplica sin confirmar.
+let _impRows=[];      // filas crudas del archivo
+let _impPreview=[];   // filas validadas para aplicar
+
+function initImport(){
+  _impRows=[]; _impPreview=[];
+  document.getElementById('imp-filename').textContent='';
+  document.getElementById('imp-mapeo').style.display='none';
+  document.getElementById('imp-preview-wrap').style.display='none';
+  const f=document.getElementById('imp-file'); if(f) f.value='';
+}
+
+// selecciona en un <select> la opción cuyo texto matchee algún candidato
+function _impAutoSel(sel,cands){
+  const opt=[...sel.options].find(o=>cands.some(c=>o.text.toLowerCase().includes(c)));
+  if(opt) sel.value=opt.value;
+}
+
+async function impLeerArchivo(file){
+  if(!file) return;
+  document.getElementById('imp-filename').textContent=file.name;
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:''});
+    if(!rows.length){toast('El archivo está vacío',true);return;}
+    _impRows=rows;
+    const headers=Object.keys(rows[0]);
+    const opts=headers.map(h=>`<option value="${h}">${h}</option>`).join('');
+    const selCod=document.getElementById('imp-col-codigo');
+    const selPre=document.getElementById('imp-col-precio');
+    selCod.innerHTML=opts; selPre.innerHTML=opts;
+    _impAutoSel(selCod,['codigo','código','cod','sku','articulo','artículo']);
+    _impAutoSel(selPre,['venta','precio','pvp','importe']);
+    document.getElementById('imp-mapeo').style.display='block';
+    document.getElementById('imp-preview-wrap').style.display='none';
+  }catch(e){toast('No se pudo leer el archivo',true);}
+}
+
+// normaliza precios tipo "1.234,56", "1,234.56", "$ 1234"
+function _impParsePrecio(v){
+  if(typeof v==='number') return v;
+  if(v==null) return NaN;
+  let s=String(v).replace(/[^0-9,.\-]/g,'').trim();
+  if(s.includes(',')&&s.includes('.')){
+    if(s.lastIndexOf(',')>s.lastIndexOf('.')) s=s.replace(/\./g,'').replace(',','.');
+    else s=s.replace(/,/g,'');
+  }else if(s.includes(',')){
+    s=s.replace(',','.');
+  }
+  return parseFloat(s);
+}
+function _impRedondear(n,paso){
+  if(!paso||paso<=0) return Math.round(n*100)/100;
+  return Math.round(n/paso)*paso;
+}
+
+async function impPrevisualizar(){
+  const colCod=document.getElementById('imp-col-codigo').value;
+  const colPre=document.getElementById('imp-col-precio').value;
+  const ajuste=parseFloat(document.getElementById('imp-ajuste').value)||0;
+  const redondeo=parseFloat(document.getElementById('imp-redondeo').value)||0;
+  if(colCod===colPre){toast('Código y precio no pueden ser la misma columna',true);return;}
+
+  // cargo artículos una sola vez → mapa codigo→artículo
+  const {data:arts,error}=await _sb.from('articulos')
+    .select('id,codigo_articulo,descripcion,precio_venta_actual').is('deleted_at',null);
+  if(error){toast('Error cargando artículos',true);return;}
+  const mapa={};
+  arts.forEach(a=>mapa[String(a.codigo_articulo).trim().toLowerCase()]=a);
+
+  _impPreview=[];
+  let ok=0,sin=0,malo=0;
+  _impRows.forEach(r=>{
+    const codigo=String(r[colCod]??'').trim();
+    if(!codigo) return; // fila sin código → saltear
+    const precioRaw=_impParsePrecio(r[colPre]);
+    const art=mapa[codigo.toLowerCase()];
+    let estado,nuevo=null;
+    if(!art){estado='sin';sin++;}
+    else if(isNaN(precioRaw)||precioRaw<0){estado='malo';malo++;}
+    else{nuevo=_impRedondear(precioRaw*(1+ajuste/100),redondeo);estado='ok';ok++;}
+    _impPreview.push({codigo,art,actual:art?art.precio_venta_actual:null,nuevo,estado});
+  });
+
+  const fmt=n=>'$'+Number(n).toLocaleString('es-AR');
+  document.getElementById('imp-preview-tbody').innerHTML=_impPreview.map(p=>{
+    const desc=p.art?p.art.descripcion:'—';
+    const act=p.actual!=null?fmt(p.actual):'—';
+    let nv='—',vari='',badge='';
+    if(p.estado==='ok'){
+      nv=fmt(p.nuevo);
+      const dif=p.actual?((p.nuevo-p.actual)/p.actual*100):0;
+      const col=dif>0?'var(--danger)':(dif<0?'var(--success)':'var(--text3)');
+      vari=`<span style="color:${col}">${dif>0?'+':''}${dif.toFixed(1)}%</span>`;
+      badge='<span style="color:var(--success)">✓ Actualiza</span>';
+    }else if(p.estado==='sin'){
+      badge='<span style="color:var(--text3)">Sin coincidencia</span>';
+    }else{
+      badge='<span style="color:var(--danger)">Precio inválido</span>';
+    }
+    return `<tr><td>${p.codigo}</td><td>${desc}</td><td>${act}</td><td>${nv}</td><td>${vari}</td><td>${badge}</td></tr>`;
+  }).join('');
+
+  document.getElementById('imp-resumen').innerHTML=
+    `<b style="color:var(--success)">${ok}</b> a actualizar · ${sin} sin coincidencia · <span style="color:${malo?'var(--danger)':'inherit'}">${malo} con error</span>`;
+  document.getElementById('imp-btn-aplicar').disabled=ok===0;
+  document.getElementById('imp-preview-wrap').style.display='block';
+}
+
+async function impAplicar(){
+  const aplicar=_impPreview.filter(p=>p.estado==='ok');
+  if(!aplicar.length){toast('No hay nada para aplicar',true);return;}
+  const btn=document.getElementById('imp-btn-aplicar');
+  btn.disabled=true;
+  let proc=0,err=0;
+  const CHUNK=20;
+  for(let i=0;i<aplicar.length;i+=CHUNK){
+    await Promise.all(aplicar.slice(i,i+CHUNK).map(async p=>{
+      const {error}=await _sb.from('articulos').update({precio_venta_actual:p.nuevo}).eq('id',p.art.id);
+      if(error){err++;return;}
+      await _sb.from('historial_precios').insert([{id_articulo:p.art.id,precio_venta:p.nuevo}]);
+      proc++;
+    }));
+    btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+CHUNK,aplicar.length)}/${aplicar.length}`;
+  }
+  // bitácora de importación
+  await _sb.from('importaciones').insert([{
+    tipo:'PRECIOS_PROPIOS',
+    archivo_nombre:document.getElementById('imp-filename').textContent,
+    estado:'FINALIZADA',
+    registros_procesados:proc,
+    registros_error:err
+  }]);
+  btn.innerHTML='<i class="ti ti-check"></i> Aplicar cambios';
+  toast(`${proc} precios actualizados${err?` · ${err} con error`:''}`);
+  initImport();
+  renderAdminArt();
+}
+
+// ── SEGURIDAD / PIN ADMIN ──
+// Punto único de decisión de acceso. Hoy usa PIN; al sumar roles solo cambia usuarioEsAdmin().
+let _adminUnlock=false;   // desbloqueo de sesión (se resetea al refrescar o cerrar sesión)
+let _pinHash=null;        // hash SHA-256 del PIN guardado (null = sin PIN configurado)
+let _configRowId=null;    // id de la fila en configuraciones
+let _segLoaded=false;
+
+function usuarioEsAdmin(){ return false; } // placeholder para el futuro sistema de roles
+function puedeAccederAdmin(){ return usuarioEsAdmin() || _adminUnlock; }
+
+async function sha256Hex(s){
+  const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+async function cargarConfigSeguridad(){
+  try{
+    const {data}=await _sb.from('configuraciones').select('id,pin_admin').limit(1);
+    if(data&&data.length){ _configRowId=data[0].id; _pinHash=data[0].pin_admin||null; }
+    else { _configRowId=null; _pinHash=null; }
+  }catch(e){ _pinHash=null; }
+  _segLoaded=true;
+}
+async function gateAdmin(){
+  if(!_segLoaded) await cargarConfigSeguridad();
+  if(puedeAccederAdmin()){ goTo('admin'); return; }
+  if(_pinHash===null){
+    _adminUnlock=true;
+    toast('Sin PIN configurado — definí uno en la pestaña Seguridad',true);
+    goTo('admin'); return;
+  }
+  document.getElementById('pin-error').style.display='none';
+  document.getElementById('pin-input').value='';
+  openModal('modal-pin');
+  setTimeout(()=>document.getElementById('pin-input').focus(),100);
+}
+async function verificarPin(){
+  const val=document.getElementById('pin-input').value.trim();
+  const err=document.getElementById('pin-error');
+  if(!val){ err.textContent='Ingresá el PIN'; err.style.display='block'; return; }
+  const h=await sha256Hex(val);
+  if(h===_pinHash){
+    _adminUnlock=true; closeModal('modal-pin'); goTo('admin');
+  }else{
+    err.textContent='PIN incorrecto'; err.style.display='block';
+    document.getElementById('pin-input').value='';
+  }
+}
+function bloquearAdmin(){
+  _adminUnlock=false;
+  toast('Acceso a Administrar datos bloqueado');
+  goTo('dashboard');
+}
+function initSeguridad(){
+  document.getElementById('seg-pin1').value='';
+  document.getElementById('seg-pin2').value='';
+  const est=document.getElementById('seg-estado');
+  est.textContent=_pinHash?'PIN configurado ✓':'Sin PIN configurado';
+  est.style.color=_pinHash?'var(--success)':'var(--text3)';
+}
+async function guardarPin(){
+  const p1=document.getElementById('seg-pin1').value.trim();
+  const p2=document.getElementById('seg-pin2').value.trim();
+  if(p1.length<4){ toast('El PIN debe tener al menos 4 dígitos',true); return; }
+  if(p1!==p2){ toast('Los PIN no coinciden',true); return; }
+  const hash=await sha256Hex(p1);
+  let error;
+  if(_configRowId){
+    ({error}=await _sb.from('configuraciones').update({pin_admin:hash}).eq('id',_configRowId));
+  }else{
+    const {data,error:e}=await _sb.from('configuraciones').insert([{pin_admin:hash,nombre_negocio:'RepuestOS'}]).select('id').single();
+    error=e; if(data) _configRowId=data.id;
+  }
+  if(error){ toast('Error guardando PIN: '+error.message,true); return; }
+  _pinHash=hash; initSeguridad();
+  toast('PIN actualizado');
+}
+
 // ── CONFIG ──
 function guardarConfig(){
   localStorage.setItem('rpos_cfg',JSON.stringify({nombre:document.getElementById('cfg-nombre').value,cuit:document.getElementById('cfg-cuit').value,dir:document.getElementById('cfg-dir').value,tel:document.getElementById('cfg-tel').value}));
@@ -1299,6 +1742,7 @@ async function initAuth(){
   });
   document.getElementById('btn-logout').addEventListener('click',async()=>{
     await _sb.auth.signOut();
+    _adminUnlock=false; // re-bloquea Admin al cerrar sesión
     document.getElementById('auth-screen').style.display='flex';
     document.getElementById('app').style.display='none';
   });
@@ -1310,6 +1754,8 @@ function mostrarApp(email){
   document.getElementById('app-inner').style.display='flex';
   document.getElementById('app-inner').style.width='100%';
   document.getElementById('sidebar-user').textContent=email;
+  _adminUnlock=false;            // cada sesión arranca bloqueada
+  cargarConfigSeguridad();       // precarga el PIN (async, sin bloquear)
   renderDashboard();
 }
 
@@ -1363,13 +1809,23 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.tab[data-admin]').forEach(t=>t.addEventListener('click',()=>{
     document.querySelectorAll('.tab[data-admin]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    ['art','cli','ven','rubros'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
+    ['art','cli','ven','rubros','imp','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
     document.getElementById('admin-'+t.getAttribute('data-admin')+'-panel').style.display='block';
     if(t.getAttribute('data-admin')==='art') renderAdminArt();
     if(t.getAttribute('data-admin')==='cli') renderAdminCli();
     if(t.getAttribute('data-admin')==='ven') renderAdminVen();
     if(t.getAttribute('data-admin')==='rubros') renderAdminRubros();
+    if(t.getAttribute('data-admin')==='imp') initImport();
+    if(t.getAttribute('data-admin')==='seg') initSeguridad();
   }));
+
+  // seguridad / PIN
+  document.getElementById('btn-pin-ok').addEventListener('click',verificarPin);
+  document.getElementById('pin-input').addEventListener('keydown',e=>{if(e.key==='Enter')verificarPin();});
+  document.getElementById('btn-confirmar-eliminar-art').addEventListener('click',confirmarEliminarArt);
+  document.getElementById('btn-confirmar-guardar').addEventListener('click',confirmarGuardarFila);
+  document.getElementById('btn-seg-guardar').addEventListener('click',guardarPin);
+  document.getElementById('btn-seg-bloquear').addEventListener('click',bloquearAdmin);
 
   // admin search
   document.getElementById('admin-search-art').addEventListener('input',renderAdminArt);
@@ -1378,6 +1834,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-backup').addEventListener('click',backup);
   document.getElementById('btn-admin-nuevo-rubro').addEventListener('click',nuevoRubro);
   document.getElementById('nuevo-rubro-nombre').addEventListener('keydown',e=>{if(e.key==='Enter')confirmarNuevoRubro();});
+
+  // importador de precios
+  document.getElementById('imp-file').addEventListener('change',e=>impLeerArchivo(e.target.files[0]));
+  document.getElementById('imp-btn-preview').addEventListener('click',impPrevisualizar);
+  document.getElementById('imp-btn-aplicar').addEventListener('click',impAplicar);
 
   // catalogo search
   document.getElementById('f-keyword').addEventListener('input',renderCatalogo);
