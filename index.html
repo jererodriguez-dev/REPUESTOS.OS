@@ -347,6 +347,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="tab" data-admin="ven">Ventas</div>
       <div class="tab" data-admin="rubros">Rubros</div>
       <div class="tab" data-admin="imp">Importar precios</div>
+      <div class="tab" data-admin="cat">Importar catálogo</div>
       <div class="tab" data-admin="seg">Seguridad</div>
     </div>
     <div id="admin-art-panel">
@@ -447,6 +448,54 @@ tr:hover td{background:var(--bg3);color:var(--text)}
           <button class="btn sm" id="btn-seg-bloquear"><i class="ti ti-lock"></i> Bloquear acceso ahora</button>
           <span id="seg-estado" style="font-size:11px"></span>
         </div>
+      </div>
+    </div>
+    <div id="admin-cat-panel" style="display:none">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-file-import"></i> Importar catálogo</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
+          Subí un Excel (.xlsx) — cada <b style="color:var(--text)">hoja = un rubro</b> — o un CSV (una hoja, elegís el rubro).
+          Se previsualiza por hoja y <b style="color:var(--text)">nada se aplica hasta confirmar</b>.
+          Da de alta artículos nuevos y actualiza descripción/marca/rubro de los existentes (el stock solo se carga en altas).
+        </p>
+        <label class="btn sm primary" style="cursor:pointer">
+          <i class="ti ti-upload"></i> Elegir archivo
+          <input type="file" id="cat-file" accept=".xlsx,.xls,.csv" style="display:none">
+        </label>
+        <span id="cat-filename" style="font-size:11px;color:var(--text2);margin-left:10px"></span>
+      </div>
+
+      <div class="card" id="cat-csv-wrap" style="display:none">
+        <div class="card-title">Rubro del archivo (CSV)</div>
+        <div class="fg" style="max-width:280px;margin-bottom:0"><label>Asignar todo el archivo a este rubro</label><select id="cat-csv-rubro"></select></div>
+      </div>
+
+      <div class="card" id="cat-rubros-wrap" style="display:none">
+        <div class="card-title" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Rubros sin coincidencia</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 10px">Estas hojas no coinciden con ningún rubro. Creá el rubro o elegí uno existente antes de aplicar.</p>
+        <div id="cat-rubros-lista"></div>
+      </div>
+
+      <div class="card" id="cat-mapeo" style="display:none">
+        <div class="card-title">Mapeo de columnas <span style="color:var(--text3);text-transform:none;letter-spacing:0">· se aplica a todas las hojas · * obligatorio</span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">
+          <div class="fg" style="margin-bottom:0"><label>Código *</label><select id="cat-col-codigo"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Descripción *</label><select id="cat-col-descripcion"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Marca artículo</label><select id="cat-col-marca_art"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Marca aplicación</label><select id="cat-col-marca_apl"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Modelo</label><select id="cat-col-modelo"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Motor</label><select id="cat-col-motor"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Stock</label><select id="cat-col-stock"></select></div>
+        </div>
+        <div style="margin-top:12px"><button class="btn sm primary" id="cat-btn-preview"><i class="ti ti-eye"></i> Previsualizar</button></div>
+      </div>
+
+      <div class="card" id="cat-preview-wrap" style="display:none;padding:0;overflow:hidden">
+        <div style="padding:10px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;border-bottom:1px solid var(--border);flex-wrap:wrap">
+          <div id="cat-resumen" style="font-size:12px;color:var(--text2)"></div>
+          <button class="btn sm success" id="cat-btn-aplicar"><i class="ti ti-check"></i> Aplicar importación</button>
+        </div>
+        <div id="cat-preview-body" style="max-height:460px;overflow:auto;padding:8px 12px"></div>
       </div>
     </div>
   </div>
@@ -1637,6 +1686,267 @@ async function impAplicar(){
   renderAdminArt();
 }
 
+// ── IMPORTADOR DE CATÁLOGO ──
+// Misma UX que el de precios. Hoja = rubro. Solo núcleo: codigo, descripcion,
+// marca_articulo, rubro (de la hoja), stock (solo en altas) y aplicaciones.
+const CAT_CAMPOS=[
+  {key:'codigo',      label:'Código',           cands:['codigo','cod','sku']},
+  {key:'descripcion', label:'Descripción',      cands:['descripcion','detalle','denominacion']},
+  {key:'marca_art',   label:'Marca artículo',   cands:['marca','fabricante']},
+  {key:'marca_apl',   label:'Marca aplicación', cands:['marca vehiculo','vehiculo','aplicacion']},
+  {key:'modelo',      label:'Modelo',           cands:['modelo']},
+  {key:'motor',       label:'Motor',            cands:['motor']},
+  {key:'stock',       label:'Stock',            cands:['stock','cantidad','existencia']}
+];
+let _catHojas=[];    // [{nombre, rows, headers, rubroId, rubroNombre}]
+let _catEsCSV=false;
+let _catPreview=[];  // [{hoja, rubro, nuevos, upd, err, filas, muestra}]
+
+// normaliza: minúsculas, sin acentos, espacios colapsados
+function _normTxt(s){
+  return String(s==null?'':s).toLowerCase()
+    .replace(/[áàäâ]/g,'a').replace(/[éèëê]/g,'e')
+    .replace(/[íìïî]/g,'i').replace(/[óòöô]/g,'o')
+    .replace(/[úùüû]/g,'u').replace(/ñ/g,'n')
+    .replace(/\s+/g,' ').trim();
+}
+
+function initImportCat(){
+  _catHojas=[]; _catEsCSV=false; _catPreview=[];
+  document.getElementById('cat-filename').textContent='';
+  ['cat-csv-wrap','cat-rubros-wrap','cat-mapeo','cat-preview-wrap'].forEach(id=>document.getElementById(id).style.display='none');
+  const f=document.getElementById('cat-file'); if(f) f.value='';
+}
+
+// asigna cada campo al header más parecido (exacto primero, luego incluye), sin repetir header
+function _catAutodetect(headers){
+  const norm=headers.map(h=>({h,n:_normTxt(h)}));
+  const used=new Set(); const res={};
+  CAT_CAMPOS.forEach(c=>{
+    let f=norm.find(o=>!used.has(o.h)&&c.cands.some(cd=>o.n===cd));
+    if(!f) f=norm.find(o=>!used.has(o.h)&&c.cands.some(cd=>o.n.includes(cd)));
+    if(f){res[c.key]=f.h; used.add(f.h);} else res[c.key]='';
+  });
+  return res;
+}
+
+async function catLeerArchivo(file){
+  if(!file) return;
+  document.getElementById('cat-filename').textContent=file.name;
+  try{
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(buf,{type:'array'});
+    _catEsCSV=/\.csv$/i.test(file.name);
+    _catHojas=wb.SheetNames.map(nombre=>{
+      const rows=XLSX.utils.sheet_to_json(wb.Sheets[nombre],{defval:''});
+      return {nombre, rows, headers:rows.length?Object.keys(rows[0]):[], rubroId:null, rubroNombre:null};
+    }).filter(h=>h.rows.length);
+    if(!_catHojas.length){toast('El archivo está vacío',true);return;}
+
+    // mapeo: unión de headers de todas las hojas
+    const setH=new Set(); _catHojas.forEach(h=>h.headers.forEach(x=>setH.add(x)));
+    const headers=[...setH];
+    const opts='<option value="">—</option>'+headers.map(h=>`<option value="${_escAttr(h)}">${_escAttr(h)}</option>`).join('');
+    const auto=_catAutodetect(headers);
+    CAT_CAMPOS.forEach(c=>{
+      const sel=document.getElementById('cat-col-'+c.key);
+      sel.innerHTML=opts; sel.value=auto[c.key]||'';
+    });
+    document.getElementById('cat-mapeo').style.display='block';
+    document.getElementById('cat-preview-wrap').style.display='none';
+
+    if(_catEsCSV){
+      const ropts='<option value="">— Elegir rubro —</option>'+rubrosDB.map(r=>`<option value="${r.id}">${_escAttr(r.nombre)}</option>`).join('');
+      document.getElementById('cat-csv-rubro').innerHTML=ropts;
+      document.getElementById('cat-csv-wrap').style.display='block';
+      document.getElementById('cat-rubros-wrap').style.display='none';
+    }else{
+      document.getElementById('cat-csv-wrap').style.display='none';
+      _catResolverRubros();
+      catRenderRubros();
+    }
+  }catch(e){toast('No se pudo leer el archivo',true);}
+}
+
+// resuelve por nombre de hoja sólo las que aún no tienen rubro (preserva asignaciones manuales)
+function _catResolverRubros(){
+  _catHojas.forEach(h=>{
+    if(h.rubroId) return;
+    const m=rubrosDB.find(r=>_normTxt(r.nombre)===_normTxt(h.nombre));
+    if(m){ h.rubroId=m.id; h.rubroNombre=m.nombre; }
+    else h.rubroNombre=h.nombre;
+  });
+}
+
+function catRenderRubros(){
+  const pend=_catHojas.map((h,i)=>({h,i})).filter(o=>!o.h.rubroId);
+  const wrap=document.getElementById('cat-rubros-wrap');
+  if(!pend.length){ wrap.style.display='none'; return; }
+  const ropts=rubrosDB.map(r=>`<option value="${r.id}">${_escAttr(r.nombre)}</option>`).join('');
+  document.getElementById('cat-rubros-lista').innerHTML=pend.map(o=>`
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+      <span style="font-size:12px;min-width:150px"><i class="ti ti-table"></i> ${_escAttr(o.h.nombre)}</span>
+      <i class="ti ti-arrow-right" style="color:var(--text3)"></i>
+      <select onchange="catAsignarRubro(${o.i},this.value)" style="max-width:200px"><option value="">— elegir existente —</option>${ropts}</select>
+      <button class="btn sm" onclick="catCrearRubro(${o.i})"><i class="ti ti-plus"></i> Crear "${_escAttr(o.h.nombre)}"</button>
+    </div>`).join('');
+  wrap.style.display='block';
+}
+
+function catAsignarRubro(idx,rubroId){
+  const h=_catHojas[idx]; if(!h||!rubroId) return;
+  const r=rubrosDB.find(x=>x.id===rubroId);
+  h.rubroId=rubroId; h.rubroNombre=r?r.nombre:h.nombre;
+  catRenderRubros();
+}
+
+async function catCrearRubro(idx){
+  const h=_catHojas[idx]; if(!h) return;
+  const {data,error}=await _sb.from('rubros').insert([{nombre:h.nombre}]).select('id,nombre').single();
+  if(error){toast('Error creando rubro: '+error.message,true);return;}
+  await cargarRubrosSelect();   // refresca rubrosDB y selects globales
+  _catResolverRubros();
+  catRenderRubros();
+  toast('Rubro creado: '+data.nombre);
+}
+
+async function catPrevisualizar(){
+  const map={}; CAT_CAMPOS.forEach(c=>map[c.key]=document.getElementById('cat-col-'+c.key).value);
+  if(!map.codigo||!map.descripcion){toast('Mapeá al menos Código y Descripción',true);return;}
+  if(map.codigo===map.descripcion){toast('Código y Descripción no pueden ser la misma columna',true);return;}
+
+  if(_catEsCSV){
+    const rid=document.getElementById('cat-csv-rubro').value;
+    if(!rid){toast('Elegí un rubro para el archivo',true);return;}
+    const r=rubrosDB.find(x=>x.id===rid);
+    _catHojas[0].rubroId=rid; _catHojas[0].rubroNombre=r?r.nombre:'';
+  }
+  const sinRubro=_catHojas.filter(h=>!h.rubroId);
+  if(sinRubro.length){toast(`Faltan resolver ${sinRubro.length} rubro(s) sin coincidencia`,true);return;}
+
+  // artículos activos → mapa codigo→artículo (una sola carga)
+  const {data:arts,error}=await _sb.from('articulos').select('id,codigo_articulo').is('deleted_at',null);
+  if(error){toast('Error cargando artículos',true);return;}
+  const mapaArt={};
+  arts.forEach(a=>mapaArt[String(a.codigo_articulo).trim().toLowerCase()]=a);
+
+  const vistos=new Set(); // detecta códigos duplicados dentro del archivo
+  _catPreview=_catHojas.map(h=>{
+    let nuevos=0,upd=0,err=0; const filas=[], muestra=[];
+    h.rows.forEach(r=>{
+      const codigo=String(r[map.codigo]??'').trim();
+      const descripcion=String(r[map.descripcion]??'').trim();
+      const get=k=>map[k]?String(r[map[k]]??'').trim():'';
+      const marca_art=get('marca_art'), marca_apl=get('marca_apl'), modelo=get('modelo'), motor=get('motor');
+      let stock=0; if(map.stock){ const n=parseInt(String(r[map.stock]??'').replace(/[^0-9\-]/g,'')); stock=isNaN(n)?0:n; }
+      let estado, valida=false, existente=null;
+      if(!codigo||!descripcion){ estado='err'; err++; }
+      else if(vistos.has(codigo.toLowerCase())){ estado='dup'; err++; }
+      else{
+        vistos.add(codigo.toLowerCase());
+        existente=mapaArt[codigo.toLowerCase()]||null;
+        if(existente){estado='upd'; upd++;} else {estado='nuevo'; nuevos++;}
+        valida=true;
+      }
+      const fila={codigo,descripcion,marca_art,marca_apl,modelo,motor,stock,rubroId:h.rubroId,existente,estado,valida};
+      filas.push(fila);
+      if(muestra.length<8) muestra.push(fila);
+    });
+    return {hoja:h.nombre, rubro:h.rubroNombre, nuevos, upd, err, filas, muestra};
+  });
+  catRenderPreview();
+}
+
+function catRenderPreview(){
+  let tN=0,tU=0,tE=0;
+  const badge=e=>({
+    nuevo:'<span style="color:var(--success)">＋ Nuevo</span>',
+    upd:'<span style="color:var(--info)">↻ Actualiza</span>',
+    dup:'<span style="color:var(--danger)">Duplicado en archivo</span>',
+    err:'<span style="color:var(--danger)">Falta código/desc.</span>'
+  }[e]||e);
+  const html=_catPreview.map(g=>{
+    tN+=g.nuevos; tU+=g.upd; tE+=g.err;
+    const filas=g.muestra.map(f=>{
+      const apl=[f.marca_apl,f.modelo,f.motor].filter(Boolean).join(' / ')||'—';
+      return `<tr>
+        <td>${_escAttr(f.codigo)}</td><td>${_escAttr(f.descripcion)}</td>
+        <td>${_escAttr(f.marca_art)||'—'}</td><td>${_escAttr(apl)}</td>
+        <td>${f.stock||0}</td><td>${badge(f.estado)}</td></tr>`;
+    }).join('');
+    return `<div style="margin-bottom:14px">
+      <div style="font-size:12px;margin:4px 2px 6px"><b><i class="ti ti-table"></i> ${_escAttr(g.hoja)}</b> → rubro <b style="color:var(--accent)">${_escAttr(g.rubro)}</b>
+        &nbsp;·&nbsp; <span style="color:var(--success)">${g.nuevos} nuevos</span> · <span style="color:var(--info)">${g.upd} a actualizar</span> · <span style="color:${g.err?'var(--danger)':'var(--text3)'}">${g.err} con error</span>
+        ${g.filas.length>g.muestra.length?` <span style="color:var(--text3)">(muestra ${g.muestra.length} de ${g.filas.length})</span>`:''}</div>
+      <table class="app-table"><thead><tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Aplicación</th><th>Stock</th><th>Estado</th></tr></thead><tbody>${filas}</tbody></table>
+    </div>`;
+  }).join('');
+  document.getElementById('cat-preview-body').innerHTML=html;
+  document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${tN}</b> nuevos · <b style="color:var(--info)">${tU}</b> a actualizar · <span style="color:${tE?'var(--danger)':'inherit'}">${tE} con error</span>`;
+  document.getElementById('cat-btn-aplicar').disabled=(tN+tU)===0;
+  document.getElementById('cat-preview-wrap').style.display='block';
+}
+
+function _catAplKey(id,marca,modelo,motor){ return id+'|'+_normTxt(marca)+'|'+_normTxt(modelo)+'|'+_normTxt(motor); }
+
+async function catAplicar(){
+  const nuevos=[], existentes=[];
+  _catPreview.forEach(g=>g.filas.forEach(f=>{ if(!f.valida) return; (f.existente?existentes:nuevos).push(f); }));
+  if(!nuevos.length && !existentes.length){toast('No hay nada para aplicar',true);return;}
+  const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;
+  let proc=0, err=0, aplOk=0, aplErr=0;
+  const codigoToId={};
+  const CH=50;
+
+  // 1) altas: insert con stock, recuperando id por código
+  for(let i=0;i<nuevos.length;i+=CH){
+    const slice=nuevos.slice(i,i+CH);
+    const payload=slice.map(f=>({codigo_articulo:f.codigo, descripcion:f.descripcion, marca_articulo:f.marca_art||null, rubro_id:f.rubroId, stock:f.stock||0, activo:true}));
+    const {data,error}=await _sb.from('articulos').insert(payload).select('id,codigo_articulo');
+    if(error){ err+=slice.length; }
+    else { data.forEach(a=>codigoToId[String(a.codigo_articulo).toLowerCase()]=a.id); proc+=data.length; }
+    btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+CH,nuevos.length)}/${nuevos.length} altas`;
+  }
+  // 2) existentes: update SIN stock (lo bloquea la base)
+  for(let i=0;i<existentes.length;i+=20){
+    await Promise.all(existentes.slice(i,i+20).map(async f=>{
+      const {error}=await _sb.from('articulos').update({descripcion:f.descripcion, marca_articulo:f.marca_art||null, rubro_id:f.rubroId}).eq('id',f.existente.id);
+      if(error){err++;return;}
+      codigoToId[f.codigo.toLowerCase()]=f.existente.id; proc++;
+    }));
+    btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+20,existentes.length)}/${existentes.length} updates`;
+  }
+  // 3) aplicaciones: dedup contra existentes y dentro del lote (modelo NULL si falta)
+  const conApl=[...nuevos,...existentes].filter(f=>f.marca_apl);
+  const dedup=new Set();
+  const idsExist=existentes.filter(f=>f.marca_apl).map(f=>f.existente.id);
+  if(idsExist.length){
+    const {data:apE}=await _sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',idsExist);
+    (apE||[]).forEach(a=>dedup.add(_catAplKey(a.id_articulo,a.marca,a.modelo,a.motor)));
+  }
+  const aplPayload=[];
+  conApl.forEach(f=>{
+    const idArt=codigoToId[f.codigo.toLowerCase()]; if(!idArt) return;
+    const key=_catAplKey(idArt,f.marca_apl,f.modelo,f.motor);
+    if(dedup.has(key)) return; dedup.add(key);
+    aplPayload.push({id_articulo:idArt, marca:f.marca_apl, modelo:f.modelo||null, motor:f.motor||null});
+  });
+  for(let i=0;i<aplPayload.length;i+=CH){
+    const {data,error}=await _sb.from('aplicaciones').insert(aplPayload.slice(i,i+CH)).select('id');
+    if(error) aplErr+=Math.min(CH,aplPayload.length-i); else if(data) aplOk+=data.length;
+  }
+  // 4) bitácora
+  await _sb.from('importaciones').insert([{tipo:'CATALOGO', archivo_nombre:document.getElementById('cat-filename').textContent, estado:'FINALIZADA', registros_procesados:proc, registros_error:err}]);
+
+  btn.innerHTML='<i class="ti ti-check"></i> Aplicar importación';
+  let msg=`${proc} artículos (${nuevos.length} altas / ${existentes.length} updates) · ${aplOk} aplicaciones`;
+  if(err) msg+=` · ${err} con error`;
+  if(aplErr) msg+=` · ${aplErr} aplic. fallaron (¿corriste el ALTER de modelo?)`;
+  toast(msg, !!(err||aplErr));
+  initImportCat();
+  renderAdminArt();
+}
+
 // ── SEGURIDAD / PIN ADMIN ──
 // Punto único de decisión de acceso. Hoy usa PIN; al sumar roles solo cambia usuarioEsAdmin().
 let _adminUnlock=false;   // desbloqueo de sesión (se resetea al refrescar o cerrar sesión)
@@ -1809,13 +2119,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.tab[data-admin]').forEach(t=>t.addEventListener('click',()=>{
     document.querySelectorAll('.tab[data-admin]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    ['art','cli','ven','rubros','imp','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
+    ['art','cli','ven','rubros','imp','cat','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
     document.getElementById('admin-'+t.getAttribute('data-admin')+'-panel').style.display='block';
     if(t.getAttribute('data-admin')==='art') renderAdminArt();
     if(t.getAttribute('data-admin')==='cli') renderAdminCli();
     if(t.getAttribute('data-admin')==='ven') renderAdminVen();
     if(t.getAttribute('data-admin')==='rubros') renderAdminRubros();
     if(t.getAttribute('data-admin')==='imp') initImport();
+    if(t.getAttribute('data-admin')==='cat') initImportCat();
     if(t.getAttribute('data-admin')==='seg') initSeguridad();
   }));
 
@@ -1826,6 +2137,11 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-confirmar-guardar').addEventListener('click',confirmarGuardarFila);
   document.getElementById('btn-seg-guardar').addEventListener('click',guardarPin);
   document.getElementById('btn-seg-bloquear').addEventListener('click',bloquearAdmin);
+
+  // importador de catálogo
+  document.getElementById('cat-file').addEventListener('change',e=>catLeerArchivo(e.target.files[0]));
+  document.getElementById('cat-btn-preview').addEventListener('click',catPrevisualizar);
+  document.getElementById('cat-btn-aplicar').addEventListener('click',catAplicar);
 
   // admin search
   document.getElementById('admin-search-art').addEventListener('input',renderAdminArt);
