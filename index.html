@@ -356,6 +356,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="tab" data-admin="rubros">Rubros</div>
       <div class="tab" data-admin="imp">Importar precios</div>
       <div class="tab" data-admin="cat">Importar catálogo</div>
+      <div class="tab" data-admin="gest">Gestión de datos</div>
       <div class="tab" data-admin="seg">Seguridad</div>
     </div>
     <div id="admin-art-panel">
@@ -513,6 +514,35 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         </div>
         <div id="cat-preview-errores" style="display:none;border-bottom:1px solid var(--border)"></div>
         <div id="cat-preview-body" style="padding:8px 12px"></div>
+      </div>
+    </div>
+    <div id="admin-gest-panel" style="display:none">
+      <div class="card">
+        <div class="card-title"><i class="ti ti-history"></i> Historial de importaciones</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
+          Cada importación de catálogo se puede <b style="color:var(--text)">deshacer</b>: da de baja los artículos nuevos
+          y revierte las actualizaciones a como estaban. Todo es <b style="color:var(--text)">soft-delete</b> (recuperable), nunca borrado físico.
+          Las importaciones previas a este módulo no tienen datos para revertir.
+        </p>
+        <div style="margin-bottom:10px"><button class="btn sm" id="btn-gest-refrescar"><i class="ti ti-refresh"></i> Refrescar</button></div>
+        <div class="card" style="padding:0;overflow:hidden;margin:0">
+          <table class="app-table">
+            <thead><tr><th>Fecha</th><th>Tipo</th><th>Detalle</th><th>Resumen</th><th>Estado</th><th></th></tr></thead>
+            <tbody id="gest-hist-tbody"><tr><td colspan="6" style="text-align:center;color:var(--text3)">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="color:var(--danger)"><i class="ti ti-eraser"></i> Limpiar rubro(s)</div>
+        <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
+          Da de baja (soft-delete) <b style="color:var(--text)">todos los artículos activos</b> de los rubros seleccionados y sus aplicaciones.
+          Queda registrado en el historial de arriba y se puede deshacer. Útil como red de seguridad antes de cargar datos en serio.
+        </p>
+        <div id="gest-rubros-lista" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);margin-bottom:12px">
+          <div style="padding:10px;color:var(--text3);font-size:12px">Cargando rubros…</div>
+        </div>
+        <button class="btn sm danger" id="btn-gest-limpiar" disabled><i class="ti ti-eraser"></i> Limpiar seleccionados</button>
       </div>
     </div>
   </div>
@@ -770,6 +800,43 @@ tr:hover td{background:var(--bg3);color:var(--text)}
   </div>
 </div>
 
+
+<!-- MODAL DESHACER IMPORTACIÓN -->
+<div class="modal-bg" id="modal-gest-deshacer">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--danger)"><i class="ti ti-arrow-back-up"></i> Deshacer importación</div>
+      <button class="btn sm" onclick="closeModal('modal-gest-deshacer')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;margin-bottom:8px" id="gest-deshacer-texto"></p>
+      <p style="font-size:11px;color:var(--text3)">Es soft-delete (recuperable). No se modifica el stock. ¿Seguro?</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-gest-deshacer')">Cancelar</button>
+        <button class="btn danger" id="btn-gest-deshacer-ok"><i class="ti ti-arrow-back-up"></i> Sí, deshacer</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL LIMPIAR RUBRO(S) -->
+<div class="modal-bg" id="modal-gest-limpiar">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Limpiar rubro(s)</div>
+      <button class="btn sm" onclick="closeModal('modal-gest-limpiar')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;margin-bottom:8px" id="gest-limpiar-texto"></p>
+      <p style="font-size:11px;color:var(--text3);margin-bottom:10px">Es soft-delete (recuperable desde el historial). No se toca el stock. Para confirmar, escribí <b style="color:var(--danger)">LIMPIAR</b>:</p>
+      <input id="gest-limpiar-confirm" placeholder="LIMPIAR" autocomplete="off" style="text-align:center;letter-spacing:3px;text-transform:uppercase">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        <button class="btn sm" onclick="closeModal('modal-gest-limpiar')">Cancelar</button>
+        <button class="btn danger" id="btn-gest-limpiar-ok" disabled><i class="ti ti-eraser"></i> Sí, limpiar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div id="theme-panel" style="display:none;position:fixed;top:54px;right:16px;background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:14px;width:180px;z-index:300">
   <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Acento</div>
@@ -1864,7 +1931,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código)
 
   (hojas||[]).forEach(h=>{
-    let nuevos=0,upd=0,err=0; const filas=[];
+    let nuevos=0,upd=0,err=0,reviv=0; const filas=[];
     (h.rows||[]).forEach(r=>{
       const get=k=>map[k]?String(r[map[k]]==null?'':r[map[k]]).trim():'';
       const codigo=get('codigo');
@@ -1889,11 +1956,15 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           existente=mapaArt[cl]||null;
           vistosCod.set(cl,{existente});
           if(existente){
-            estado='upd'; upd++;
+            const esRevive=!!existente.deleted_at;   // fila soft-deleted: el código UNIQUE ya está ocupado → revivir, no INSERT
+            estado=esRevive?'reviv':'upd'; upd++; if(esRevive) reviv++;
             const payload={descripcion, marca_articulo:marca_art||null, rubro_id:h.rubroId};
             if(codigo_barra) payload.codigo_barra=codigo_barra;
             if(ubicacion) payload.ubicacion=ubicacion;
-            plan.articulos.update.push({id:existente.id, codigo, payload});
+            // snapshot de los valores que vamos a pisar, para poder DESHACER esta importación
+            const antes={descripcion:existente.descripcion, marca_articulo:existente.marca_articulo, rubro_id:existente.rubro_id};
+            if(esRevive){ payload.deleted_at=null; antes.deleted_at=existente.deleted_at; }   // revivir; deshacer vuelve a soft-deletear
+            plan.articulos.update.push({id:existente.id, codigo, payload, antes, reviv:esRevive});
           }else{
             estado='nuevo'; nuevos++;
             plan.articulos.insert.push({codigo, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:h.rubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
@@ -1921,10 +1992,65 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       // fila compacta para el preview virtualizado: NO guardo el array de apps, sólo nº y la primera
       if(estado!=='err') filas.push({codigo, descripcion, marca_art, stock, estado, na:apps.length, a0:apps.length?{marca:apps[0].marca, modelo:apps[0].modelo, motor:apps[0].motor}:null});
     });
-    plan.preview.push({hoja:h.nombre, rubro:h.rubroNombre, nuevos, upd, err, filas, totalValidas:filas.length});
+    plan.preview.push({hoja:h.nombre, rubro:h.rubroNombre, nuevos, upd, reviv, err, filas, totalValidas:filas.length});
   });
-  plan.resumen={ nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  plan.resumen={ nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
+}
+
+// --- DESHACER / LIMPIAR: snapshot y reversión (lógica PURA, testeada por el harness) ---
+
+// arma el objeto que se guarda en importaciones.operaciones tras aplicar el catálogo.
+//   altasArtIds: ids de artículos insertados (altas)   ·   altasAplIds: ids de aplicaciones insertadas
+//   updates: plan.articulos.update (cada uno trae {id, antes})
+function _catBuildOperaciones(altasArtIds, altasAplIds, updates){
+  return {
+    altas_articulos: (altasArtIds||[]).slice(),
+    altas_aplicaciones: (altasAplIds||[]).slice(),
+    updates_articulos: (updates||[]).map(u=>({id:u.id, antes:u.antes||{}}))
+  };
+}
+
+// arma el operaciones de una limpieza de rubro(s): solo bajas (todo se revive al deshacer).
+function _catBuildLimpieza(bajaArtIds, bajaAplIds, rubros){
+  return {
+    bajas_articulos: (bajaArtIds||[]).slice(),
+    bajas_aplicaciones: (bajaAplIds||[]).slice(),
+    rubros: (rubros||[]).slice()
+  };
+}
+
+// dado una importación {tipo, operaciones}, calcula QUÉ revertir. El ejecutor (impuro)
+// lo aplica contra Supabase. NUNCA toca stock (solo deleted_at o texto/rubro_id).
+//   CATALOGO:       altas → soft-delete ; updates → restaurar "antes".
+//   limpieza_rubro: bajas → revivir (deleted_at=NULL).
+function _catPlanDeshacer(imp){
+  imp=imp||{}; const ops=imp.operaciones||{};
+  const out={ softDelArt:[], softDelApl:[], restoreArt:[], reviveArt:[], reviveApl:[] };
+  if(imp.tipo==='limpieza_rubro'){
+    out.reviveArt=(ops.bajas_articulos||[]).slice();
+    out.reviveApl=(ops.bajas_aplicaciones||[]).slice();
+  }else{
+    out.softDelArt=(ops.altas_articulos||[]).slice();
+    out.softDelApl=(ops.altas_aplicaciones||[]).slice();
+    out.restoreArt=(ops.updates_articulos||[]).map(u=>({id:u.id, set:u.antes||{}}));
+  }
+  return out;
+}
+
+// ¿esta importación se puede deshacer? (tiene snapshot y no fue revertida ya).
+function _catPuedeDeshacer(imp){
+  if(!imp || imp.revertida_en) return false;
+  const ops=imp.operaciones; if(!ops) return false;
+  if(imp.tipo==='limpieza_rubro') return (ops.bajas_articulos||[]).length>0;
+  return (ops.altas_articulos||[]).length>0 || (ops.altas_aplicaciones||[]).length>0 || (ops.updates_articulos||[]).length>0;
+}
+
+// conteo de artículos ACTIVOS por rubro_id. articulos: [{rubro_id}]  →  {rubro_id: n}.
+function _catContarPorRubro(articulos){
+  const out={};
+  (articulos||[]).forEach(a=>{ const k=a.rubro_id==null?'__sin__':String(a.rubro_id); out[k]=(out[k]||0)+1; });
+  return out;
 }
 // === CAT-CORE END ===
 
@@ -2083,10 +2209,12 @@ async function catPrevisualizar(){
   const sinRubro=_catHojas.filter(h=>!h.rubroId);
   if(sinRubro.length){toast(`Faltan resolver ${sinRubro.length} rubro(s) sin coincidencia`,true);return;}
 
-  // estado de la base: artículos activos + aplicaciones SOLO de los códigos presentes en el archivo.
-  // Ambas consultas paginan con _sbSelectAll: sin esto, el tope de 1000 de Supabase truncaría la lista
-  // de existentes y, al reimportar, los códigos fuera de esa ventana saldrían como "nuevos" en vez de "a actualizar".
-  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo').is('deleted_at',null));
+  // estado de la base: TODOS los artículos (incl. soft-deleted, para revivir en vez de chocar
+  // contra el UNIQUE de codigo_articulo) con los campos del snapshot "antes", + aplicaciones ACTIVAS
+  // SOLO de los códigos presentes en el archivo. Ambas consultas paginan con _sbSelectAll: sin esto,
+  // el tope de 1000 de Supabase truncaría la lista y, al reimportar, los códigos fuera de esa ventana
+  // saldrían como "nuevos" en vez de "a actualizar".
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,rubro_id,deleted_at'));
   if(error){toast('Error cargando artículos',true);return;}
   const codesFile=new Set();
   _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=String(r[map.codigo]==null?'':r[map.codigo]).trim().toLowerCase(); if(c) codesFile.add(c); }));
@@ -2094,7 +2222,7 @@ async function catPrevisualizar(){
   let dbApl=[];
   for(let i=0;i<idsExist.length;i+=200){
     const slice=idsExist.slice(i,i+200);
-    const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice));
+    const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
   _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep}, arts, dbApl);
@@ -2117,11 +2245,12 @@ function _catVirtRowHtml(it, top, h){
       <b><i class="ti ti-table"></i> ${_escAttr(g.hoja)}</b><span style="color:var(--text3)">→</span><b style="color:var(--accent)">${_escAttr(g.rubro)}</b>
       <span style="color:var(--text3)">·</span><span style="color:var(--success)">${g.nuevos} nuevos</span>
       <span style="color:var(--text3)">·</span><span style="color:var(--info)">${g.upd} a actualizar</span>
+      ${g.reviv?`<span style="color:var(--text3)">·</span><span style="color:var(--accent)">${g.reviv} revividos</span>`:''}
       <span style="color:var(--text3)">·</span><span style="color:${g.err?'var(--danger)':'var(--text3)'}">${g.err} con error</span>
       <span style="color:var(--text3)">· ${g.totalValidas} filas · se aplican todas</span></div>`;
   }
   const f=it.f;
-  const badge={nuevo:'<span style="color:var(--success)">＋ Nuevo</span>',upd:'<span style="color:var(--info)">↻ Actualiza</span>',masapl:'<span style="color:var(--text2)">↳ + aplic.</span>'}[f.estado]||_escAttr(f.estado||'');
+  const badge={nuevo:'<span style="color:var(--success)">＋ Nuevo</span>',upd:'<span style="color:var(--info)">↻ Actualiza</span>',reviv:'<span style="color:var(--accent)">⟲ Revive</span>',masapl:'<span style="color:var(--text2)">↳ + aplic.</span>'}[f.estado]||_escAttr(f.estado||'');
   let apl='—';
   if(f.a0){ apl=[f.a0.marca,f.a0.modelo,f.a0.motor].filter(Boolean).join(' / ')||'—'; if(f.na>1) apl+=' +'+(f.na-1); }
   return `<div style="${base};${_CAT_GRID};padding:2px 6px">
@@ -2186,7 +2315,7 @@ function catRenderPreview(){
   scrollEl.onscroll=()=>{ if(_catVirt.raf) return; _catVirt.raf=requestAnimationFrame(()=>{ _catVirt.raf=0; _catVirtPaint(); }); };
 
   const R=plan.resumen;
-  document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
+  document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
   document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns)===0;
   document.getElementById('cat-preview-wrap').style.display='block';
   _catVirtPaint();   // pintura inicial (ya con display:block → hay clientHeight)
@@ -2199,6 +2328,7 @@ async function catAplicar(){
   const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;
   let proc=0, err=0, aplOk=0, aplErr=0;
   const codigoToId={};
+  const altaArtIds=[], altaAplIds=[];   // ids reales generados por la base → snapshot para DESHACER
   const CH=50;
 
   // 1) altas: insert con stock, recuperando id por código
@@ -2206,7 +2336,7 @@ async function catAplicar(){
     const slice=ins.slice(i,i+CH);
     const {data,error}=await _sb.from('articulos').insert(slice.map(x=>x.payload)).select('id,codigo_articulo');
     if(error){ err+=slice.length; }
-    else { data.forEach(a=>codigoToId[String(a.codigo_articulo).toLowerCase()]=a.id); proc+=data.length; }
+    else { data.forEach(a=>{ codigoToId[String(a.codigo_articulo).toLowerCase()]=a.id; altaArtIds.push(a.id); }); proc+=data.length; }
     btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+CH,ins.length)}/${ins.length} altas`;
   }
   // 2) updates SIN stock (lo bloquea la base) — la descripción se pisa con la computada desde la planilla
@@ -2226,10 +2356,11 @@ async function catAplicar(){
   });
   for(let i=0;i<aplPayload.length;i+=CH){
     const {data,error}=await _sb.from('aplicaciones').insert(aplPayload.slice(i,i+CH)).select('id');
-    if(error) aplErr+=Math.min(CH,aplPayload.length-i); else if(data) aplOk+=data.length;
+    if(error) aplErr+=Math.min(CH,aplPayload.length-i); else if(data){ aplOk+=data.length; data.forEach(a=>altaAplIds.push(a.id)); }
   }
-  // 4) bitácora
-  await _sb.from('importaciones').insert([{tipo:'CATALOGO', archivo_nombre:document.getElementById('cat-filename').textContent, estado:'FINALIZADA', registros_procesados:proc, registros_error:err}]);
+  // 4) bitácora + snapshot de operaciones (para poder DESHACER esta importación desde "Gestión de datos")
+  const operaciones=_catBuildOperaciones(altaArtIds, altaAplIds, upds);
+  await _sb.from('importaciones').insert([{tipo:'CATALOGO', archivo_nombre:document.getElementById('cat-filename').textContent, estado:'FINALIZADA', registros_procesados:proc, registros_error:err, operaciones}]);
 
   btn.innerHTML='<i class="ti ti-check"></i> Aplicar importación';
   let msg=`${proc} artículos (${ins.length} altas / ${upds.length} updates) · ${aplOk} aplicaciones`;
@@ -2237,6 +2368,192 @@ async function catAplicar(){
   if(aplErr) msg+=` · ${aplErr} aplic. fallaron`;
   toast(msg, !!(err||aplErr));
   initImportCat();
+  renderAdminArt();
+}
+
+// ── GESTIÓN DE IMPORTACIONES / DATOS ──
+// Red de seguridad sobre el importador de catálogo: historial con DESHACER por
+// importación (altas → soft-delete, updates → restaurar snapshot "antes") y
+// limpieza de rubro(s) por soft-delete. Todo reversible y trazable. NUNCA toca stock.
+// La lógica pura (qué revertir, conteos) vive en el bloque CAT-CORE.
+let _gestImports=[];        // cache de la última lectura de importaciones
+let _gestRubros=[];         // [{id, nombre, count}]
+let _gestSel=new Set();     // ids de rubros tildados para limpiar
+let _gestDeshacerId=null;   // importación elegida para deshacer
+
+const _GEST_TIPO={CATALOGO:{t:'Catálogo',c:'var(--info)'}, PRECIOS_PROPIOS:{t:'Precios',c:'var(--text2)'}, limpieza_rubro:{t:'Limpieza rubro',c:'var(--danger)'}};
+function _gestFecha(s){ try{ const d=new Date(s); return d.toLocaleDateString('es-AR')+' '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return s||'—'; } }
+
+async function initGestion(){
+  await Promise.all([gestCargarHistorial(), gestCargarRubros()]);
+}
+
+async function gestCargarHistorial(){
+  const tb=document.getElementById('gest-hist-tbody');
+  tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text3)">Cargando…</td></tr>';
+  const {data,error}=await _sbSelectAll(()=>_sb.from('importaciones').select('id,tipo,archivo_nombre,estado,registros_procesados,registros_error,operaciones,revertida_en,created_at').order('created_at',{ascending:false}));
+  if(error){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--danger)">Error cargando historial</td></tr>'; return; }
+  _gestImports=data||[];
+  gestRenderHistorial();
+}
+
+function gestRenderHistorial(){
+  const tb=document.getElementById('gest-hist-tbody');
+  if(!_gestImports.length){ tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text3)">Sin importaciones registradas</td></tr>'; return; }
+  tb.innerHTML=_gestImports.map(imp=>{
+    const ti=_GEST_TIPO[imp.tipo]||{t:_escAttr(imp.tipo||'—'),c:'var(--text2)'};
+    const ops=imp.operaciones||null;
+    let detalle=_escAttr(imp.archivo_nombre||'—'), resumen='—';
+    if(imp.tipo==='limpieza_rubro' && ops){
+      detalle=_escAttr((ops.rubros||[]).join(', ')||'rubros');
+      resumen=`${(ops.bajas_articulos||[]).length} bajas`;
+    }else if(imp.tipo==='CATALOGO' && ops){
+      resumen=`${(ops.altas_articulos||[]).length} altas · ${(ops.updates_articulos||[]).length} updates`;
+    }else if(imp.tipo==='PRECIOS_PROPIOS'){
+      resumen=`${imp.registros_procesados||0} precios`;
+    }else if(imp.registros_procesados!=null){ resumen=`${imp.registros_procesados}`; }
+
+    const estado=imp.revertida_en?'<span style="color:var(--text3)">↩ Deshecha</span>':'<span style="color:var(--success)">● Activa</span>';
+    let accion;
+    if(_catPuedeDeshacer(imp)){
+      accion=`<button class="btn sm danger" onclick="gestPedirDeshacer(${imp.id})"><i class="ti ti-arrow-back-up"></i> Deshacer</button>`;
+    }else{
+      let tip;
+      if(imp.revertida_en) tip='Ya fue deshecha';
+      else if(imp.tipo==='PRECIOS_PROPIOS') tip='El importador de precios tiene su propio historial';
+      else tip='Sin datos para revertir (importación previa al módulo)';
+      accion=`<button class="btn sm" disabled title="${_escAttr(tip)}" style="opacity:.45;cursor:not-allowed"><i class="ti ti-arrow-back-up"></i> Deshacer</button>`;
+    }
+    return `<tr>
+      <td style="white-space:nowrap;font-size:11px">${_gestFecha(imp.created_at)}</td>
+      <td><span style="color:${ti.c};font-weight:600">${ti.t}</span></td>
+      <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${detalle}">${detalle}</td>
+      <td style="font-size:11px;white-space:nowrap">${resumen}</td>
+      <td style="white-space:nowrap">${estado}</td>
+      <td style="text-align:right">${accion}</td></tr>`;
+  }).join('');
+}
+
+function gestPedirDeshacer(id){
+  const imp=_gestImports.find(x=>x.id===id); if(!imp) return;
+  _gestDeshacerId=id;
+  const ops=imp.operaciones||{};
+  let txt;
+  if(imp.tipo==='limpieza_rubro'){
+    txt=`Vas a <b>revivir</b> ${(ops.bajas_articulos||[]).length} artículo(s) y sus aplicaciones de la limpieza del ${_gestFecha(imp.created_at)}.`;
+  }else{
+    const a=(ops.altas_articulos||[]).length, u=(ops.updates_articulos||[]).length, ap=(ops.altas_aplicaciones||[]).length;
+    txt=`Vas a deshacer la importación del ${_gestFecha(imp.created_at)}: se dan de baja <b>${a}</b> artículo(s) nuevo(s)${ap?` y <b>${ap}</b> aplicación(es)`:''} y se revierten <b>${u}</b> actualización(es).`;
+  }
+  document.getElementById('gest-deshacer-texto').innerHTML=txt;
+  openModal('modal-gest-deshacer');
+}
+
+async function gestEjecutarDeshacer(){
+  const imp=_gestImports.find(x=>x.id===_gestDeshacerId); if(!imp){ closeModal('modal-gest-deshacer'); return; }
+  const btn=document.getElementById('btn-gest-deshacer-ok'); btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Deshaciendo…';
+  const d=_catPlanDeshacer(imp);
+  const now=new Date().toISOString();
+  try{
+    // soft-delete de las altas y restauración de los updates (NUNCA toca stock: solo deleted_at / texto / rubro_id)
+    await _gestChunkUpdate('aplicaciones', d.softDelApl, {deleted_at:now});
+    await _gestChunkUpdate('articulos',   d.softDelArt, {deleted_at:now});
+    for(const r of d.restoreArt){ const {error}=await _sb.from('articulos').update(r.set).eq('id',r.id); if(error) throw error; }
+    // revivir (deshacer de una limpieza)
+    await _gestChunkUpdate('aplicaciones', d.reviveApl, {deleted_at:null});
+    await _gestChunkUpdate('articulos',   d.reviveArt, {deleted_at:null});
+    await _sb.from('importaciones').update({revertida_en:now}).eq('id',imp.id);
+    toast('Importación deshecha');
+  }catch(e){ toast('Error al deshacer: '+(e.message||e),true); }
+  btn.disabled=false; btn.innerHTML='<i class="ti ti-arrow-back-up"></i> Sí, deshacer';
+  closeModal('modal-gest-deshacer');
+  await initGestion();
+  renderAdminArt();
+}
+
+// update por chunks de ids con .in(): evita URLs gigantes y respeta límites de PostgREST
+async function _gestChunkUpdate(tabla, ids, patch){
+  if(!ids || !ids.length) return;
+  for(let i=0;i<ids.length;i+=100){
+    const {error}=await _sb.from(tabla).update(patch).in('id',ids.slice(i,i+100));
+    if(error) throw error;
+  }
+}
+
+// --- limpiar rubro(s) ---
+async function gestCargarRubros(){
+  const wrap=document.getElementById('gest-rubros-lista');
+  const {data:rubros,error}=await _sb.from('rubros').select('id,nombre').is('deleted_at',null).order('nombre');
+  if(error){ wrap.innerHTML='<div style="padding:10px;color:var(--danger);font-size:12px">Error cargando rubros</div>'; return; }
+  const {data:arts}=await _sbSelectAll(()=>_sb.from('articulos').select('rubro_id').is('deleted_at',null));
+  const cont=_catContarPorRubro(arts||[]);
+  _gestRubros=(rubros||[]).map(r=>({id:r.id, nombre:r.nombre, count:cont[String(r.id)]||0}));
+  _gestSel.clear();
+  gestRenderRubros();
+}
+
+function gestRenderRubros(){
+  const wrap=document.getElementById('gest-rubros-lista');
+  if(!_gestRubros.length){ wrap.innerHTML='<div style="padding:10px;color:var(--text3);font-size:12px">No hay rubros</div>'; gestActualizarBtnLimpiar(); return; }
+  wrap.innerHTML=_gestRubros.map(r=>`
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);cursor:${r.count===0?'default':'pointer'}">
+      <input type="checkbox" onchange="gestToggleRubro('${r.id}',this.checked)" ${_gestSel.has(r.id)?'checked':''} ${r.count===0?'disabled':''}>
+      <span style="flex:1;font-size:12px${r.count===0?';color:var(--text3)':''}">${_escAttr(r.nombre)}</span>
+      <span style="font-size:11px;color:var(--text3)">${r.count} artículo${r.count===1?'':'s'}</span>
+    </label>`).join('');
+  gestActualizarBtnLimpiar();
+}
+
+function gestToggleRubro(id,on){ if(on)_gestSel.add(id); else _gestSel.delete(id); gestActualizarBtnLimpiar(); }
+
+function gestActualizarBtnLimpiar(){
+  const n=[..._gestSel].reduce((s,id)=>{ const r=_gestRubros.find(x=>x.id===id); return s+(r?r.count:0); },0);
+  const btn=document.getElementById('btn-gest-limpiar');
+  btn.disabled=_gestSel.size===0;
+  btn.innerHTML=`<i class="ti ti-eraser"></i> Limpiar seleccionados${_gestSel.size?` (${n} art.)`:''}`;
+}
+
+function gestPedirLimpiar(){
+  if(!_gestSel.size){ toast('Elegí al menos un rubro',true); return; }
+  const sel=_gestRubros.filter(r=>_gestSel.has(r.id));
+  const n=sel.reduce((s,r)=>s+r.count,0);
+  document.getElementById('gest-limpiar-texto').innerHTML=`Vas a dar de baja <b>${n}</b> artículo(s) (y sus aplicaciones) de los rubros <b>${_escAttr(sel.map(r=>r.nombre).join(', '))}</b>.`;
+  const inp=document.getElementById('gest-limpiar-confirm'); inp.value='';
+  document.getElementById('btn-gest-limpiar-ok').disabled=true;
+  openModal('modal-gest-limpiar');
+  setTimeout(()=>inp.focus(),100);
+}
+
+function gestLimpiarInput(){
+  document.getElementById('btn-gest-limpiar-ok').disabled=document.getElementById('gest-limpiar-confirm').value.trim().toUpperCase()!=='LIMPIAR';
+}
+
+async function gestEjecutarLimpiar(){
+  const sel=_gestRubros.filter(r=>_gestSel.has(r.id)); if(!sel.length){ closeModal('modal-gest-limpiar'); return; }
+  const btn=document.getElementById('btn-gest-limpiar-ok'); btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Limpiando…';
+  const now=new Date().toISOString();
+  try{
+    const rubroIds=sel.map(r=>r.id);
+    // artículos activos de esos rubros
+    const {data:arts}=await _sbSelectAll(()=>_sb.from('articulos').select('id').is('deleted_at',null).in('rubro_id',rubroIds));
+    const artIds=(arts||[]).map(a=>a.id);
+    // aplicaciones activas de esos artículos (por chunks de id_articulo)
+    let aplIds=[];
+    for(let i=0;i<artIds.length;i+=200){
+      const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id').is('deleted_at',null).in('id_articulo',artIds.slice(i,i+200)));
+      if(data) aplIds=aplIds.concat(data.map(a=>a.id));
+    }
+    // soft-delete: primero aplicaciones, después artículos (solo deleted_at, nunca stock)
+    await _gestChunkUpdate('aplicaciones', aplIds, {deleted_at:now});
+    await _gestChunkUpdate('articulos',   artIds, {deleted_at:now});
+    // entrada reversible en el historial
+    const operaciones=_catBuildLimpieza(artIds, aplIds, sel.map(r=>r.nombre));
+    await _sb.from('importaciones').insert([{tipo:'limpieza_rubro', archivo_nombre:'Limpieza: '+sel.map(r=>r.nombre).join(', '), estado:'FINALIZADA', registros_procesados:artIds.length, operaciones}]);
+    toast(`${artIds.length} artículo(s) dados de baja`);
+  }catch(e){ toast('Error en la limpieza: '+(e.message||e),true); }
+  btn.disabled=false; btn.innerHTML='<i class="ti ti-eraser"></i> Sí, limpiar';
+  closeModal('modal-gest-limpiar');
+  await initGestion();
   renderAdminArt();
 }
 
@@ -2412,7 +2729,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.tab[data-admin]').forEach(t=>t.addEventListener('click',()=>{
     document.querySelectorAll('.tab[data-admin]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    ['art','cli','ven','rubros','imp','cat','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
+    ['art','cli','ven','rubros','imp','cat','gest','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
     document.getElementById('admin-'+t.getAttribute('data-admin')+'-panel').style.display='block';
     if(t.getAttribute('data-admin')==='art') renderAdminArt();
     if(t.getAttribute('data-admin')==='cli') renderAdminCli();
@@ -2420,6 +2737,7 @@ window.addEventListener('DOMContentLoaded',()=>{
     if(t.getAttribute('data-admin')==='rubros') renderAdminRubros();
     if(t.getAttribute('data-admin')==='imp') initImport();
     if(t.getAttribute('data-admin')==='cat') initImportCat();
+    if(t.getAttribute('data-admin')==='gest') initGestion();
     if(t.getAttribute('data-admin')==='seg') initSeguridad();
   }));
 
@@ -2436,6 +2754,14 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('cat-btn-plantilla').addEventListener('click',catDescargarPlantilla);
   document.getElementById('cat-btn-preview').addEventListener('click',catPrevisualizar);
   document.getElementById('cat-btn-aplicar').addEventListener('click',catAplicar);
+
+  // gestión de datos (historial + deshacer + limpiar rubros)
+  document.getElementById('btn-gest-refrescar').addEventListener('click',initGestion);
+  document.getElementById('btn-gest-deshacer-ok').addEventListener('click',gestEjecutarDeshacer);
+  document.getElementById('btn-gest-limpiar').addEventListener('click',gestPedirLimpiar);
+  document.getElementById('btn-gest-limpiar-ok').addEventListener('click',gestEjecutarLimpiar);
+  document.getElementById('gest-limpiar-confirm').addEventListener('input',gestLimpiarInput);
+  document.getElementById('gest-limpiar-confirm').addEventListener('keydown',e=>{if(e.key==='Enter'&&!document.getElementById('btn-gest-limpiar-ok').disabled)gestEjecutarLimpiar();});
 
   // admin search
   document.getElementById('admin-search-art').addEventListener('input',renderAdminArt);
