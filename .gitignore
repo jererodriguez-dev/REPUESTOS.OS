@@ -2,3 +2,9 @@
 CONTEXTO-JM.md
 HISTORIAL.md
 sql-corregido.sql
+
+# Dump del schema real de la base (no publicar)
+schema-actual.sql
+
+# Harness de pruebas en seco del importador (no es parte del sitio)
+harness-cat.mjs
