@@ -14,6 +14,14 @@
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;overflow:hidden}
 #app{display:flex;height:100vh}
 
+/* SCROLLBARS — estilo sobrio coherente con el tema oscuro (--vars); aplica a toda la web */
+*{scrollbar-width:thin;scrollbar-color:var(--border2) transparent}
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-track{background:transparent}
+*::-webkit-scrollbar-thumb{background:var(--border2);border-radius:8px;border:2px solid transparent;background-clip:padding-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--text3)}
+*::-webkit-scrollbar-corner{background:transparent}
+
 /* AUTH */
 #auth-screen{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:2000}
 .auth-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r2);padding:36px;width:340px}
@@ -2045,6 +2053,20 @@ async function catCrearRubro(idx){
   toast('Rubro creado: '+data.nombre);
 }
 
+// trae TODAS las filas de una consulta, sorteando el tope de ~1000 de PostgREST/Supabase (pagina con .range).
+// buildQuery() debe devolver una consulta NUEVA en cada llamada (sin .range previo).
+async function _sbSelectAll(buildQuery, pageSize=1000){
+  let out=[], from=0;
+  for(;;){
+    const {data,error}=await buildQuery().range(from, from+pageSize-1);
+    if(error) return {data:out, error};
+    out=out.concat(data||[]);
+    if(!data || data.length<pageSize) break;   // última página
+    from+=pageSize;
+  }
+  return {data:out, error:null};
+}
+
 async function catPrevisualizar(){
   const map={}; CAT_CAMPOS.forEach(c=>map[c.key]=document.getElementById('cat-col-'+c.key).value);
   if(!map.codigo||!map.descripcion){toast('Mapeá al menos Código y Descripción',true);return;}
@@ -2061,15 +2083,18 @@ async function catPrevisualizar(){
   const sinRubro=_catHojas.filter(h=>!h.rubroId);
   if(sinRubro.length){toast(`Faltan resolver ${sinRubro.length} rubro(s) sin coincidencia`,true);return;}
 
-  // estado de la base: artículos activos + aplicaciones SOLO de los códigos presentes en el archivo
-  const {data:arts,error}=await _sb.from('articulos').select('id,codigo_articulo').is('deleted_at',null);
+  // estado de la base: artículos activos + aplicaciones SOLO de los códigos presentes en el archivo.
+  // Ambas consultas paginan con _sbSelectAll: sin esto, el tope de 1000 de Supabase truncaría la lista
+  // de existentes y, al reimportar, los códigos fuera de esa ventana saldrían como "nuevos" en vez de "a actualizar".
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo').is('deleted_at',null));
   if(error){toast('Error cargando artículos',true);return;}
   const codesFile=new Set();
   _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=String(r[map.codigo]==null?'':r[map.codigo]).trim().toLowerCase(); if(c) codesFile.add(c); }));
   const idsExist=arts.filter(a=>codesFile.has(String(a.codigo_articulo).trim().toLowerCase())).map(a=>a.id);
   let dbApl=[];
   for(let i=0;i<idsExist.length;i+=200){
-    const {data}=await _sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',idsExist.slice(i,i+200));
+    const slice=idsExist.slice(i,i+200);
+    const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice));
     if(data) dbApl=dbApl.concat(data);
   }
   _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep}, arts, dbApl);
