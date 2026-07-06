@@ -9,5 +9,5 @@ schema-actual.sql
 # Migraciones SQL (las corre Jere en Supabase; no se publican con el sitio)
 migracion-operaciones.sql
 
-# Harness de pruebas en seco del importador (no es parte del sitio)
-harness-cat.mjs
+# Harness de pruebas en seco (dev-only, no es parte del sitio)
+harness-*.mjs

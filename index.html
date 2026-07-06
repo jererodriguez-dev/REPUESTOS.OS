@@ -959,6 +959,7 @@ function getRubroNombre(){
 }
 
 // ── BASE ID ──
+// === BASEID-CORE START === (usa document/_sb inyectados; el harness los mockea)
 let _baseIdData=null;
 async function verificarBaseId(val){
   const aviso=document.getElementById('baseid-aviso');
@@ -976,6 +977,7 @@ async function verificarBaseId(val){
     _baseIdData=null;
   }
 }
+// === BASEID-CORE END ===
 async function heredarDeBaseId(){
   if(!_baseIdData) return;
   // Heredar datos técnicos
@@ -2179,6 +2181,7 @@ async function catCrearRubro(idx){
   toast('Rubro creado: '+data.nombre);
 }
 
+// === SELECTALL-CORE START === (función pura salvo por buildQuery, que el harness mockea)
 // trae TODAS las filas de una consulta, sorteando el tope de ~1000 de PostgREST/Supabase (pagina con .range).
 // buildQuery() debe devolver una consulta NUEVA en cada llamada (sin .range previo).
 async function _sbSelectAll(buildQuery, pageSize=1000){
@@ -2192,6 +2195,7 @@ async function _sbSelectAll(buildQuery, pageSize=1000){
   }
   return {data:out, error:null};
 }
+// === SELECTALL-CORE END ===
 
 async function catPrevisualizar(){
   const map={}; CAT_CAMPOS.forEach(c=>map[c.key]=document.getElementById('cat-col-'+c.key).value);
