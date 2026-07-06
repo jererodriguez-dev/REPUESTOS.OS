@@ -966,7 +966,7 @@ async function verificarBaseId(val){
   const artId=document.getElementById('ficha-id').value;
   let q=_sb.from('articulos').select('id,codigo_articulo,descripcion').eq('base_id',val).is('deleted_at',null);
   if(artId) q=q.neq('id',artId);
-  const {data}=await q.limit(1).single();
+  const {data}=await q.limit(1).maybeSingle();
   if(data){
     _baseIdData=data;
     document.getElementById('baseid-aviso-txt').textContent=`Ya existe: ${data.codigo_articulo} — ${data.descripcion}. ¿Heredar medidas y aplicaciones?`;
