@@ -1699,8 +1699,8 @@ async function impPrevisualizar(){
   if(colCod===colPre){toast('Código y precio no pueden ser la misma columna',true);return;}
 
   // cargo artículos una sola vez → mapa codigo→artículo
-  const {data:arts,error}=await _sb.from('articulos')
-    .select('id,codigo_articulo,descripcion,precio_venta_actual').is('deleted_at',null);
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos')
+    .select('id,codigo_articulo,descripcion,precio_venta_actual').is('deleted_at',null));
   if(error){toast('Error cargando artículos',true);return;}
   const mapa={};
   arts.forEach(a=>mapa[String(a.codigo_articulo).trim().toLowerCase()]=a);
