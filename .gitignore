@@ -1,13 +1,15 @@
-# Documentación interna del proyecto (no publicar)
-CONTEXTO-JM.md
-HISTORIAL.md
-sql-corregido.sql
+# Todo lo interno de desarrollo (contexto, SQL, ordenes para Code)
+_dev/
 
-# Dump del schema real de la base (no publicar)
-schema-actual.sql
-
-# Migraciones SQL (las corre Jere en Supabase; no se publican con el sitio)
-migracion-operaciones.sql
+# Config local de Claude Code
+.claude/
 
 # Harness de pruebas en seco (dev-only, no es parte del sitio)
 harness-*.mjs
+
+# Dump del schema real de la base
+schema-actual.sql
+
+# Planillas de datos: van en ../datos/, nunca dentro del repo
+*.xlsx
+*.xls
