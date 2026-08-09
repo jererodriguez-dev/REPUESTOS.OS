@@ -2656,14 +2656,67 @@ async function guardarPin(){
 }
 
 // ── CONFIG ──
-function guardarConfig(){
-  localStorage.setItem('rpos_cfg',JSON.stringify({nombre:document.getElementById('cfg-nombre').value,cuit:document.getElementById('cfg-cuit').value,dir:document.getElementById('cfg-dir').value,tel:document.getElementById('cfg-tel').value}));
-  toast('Configuración guardada');
+// Fuente única: la fila de `configuraciones` en Supabase. Sin copia en
+// localStorage: tener dos fuentes de verdad ERA el bug — el toast confirmaba un
+// guardado que nunca salía del navegador.
+
+// === CONFIG-CORE START === normalización PURA de la alícuota (el harness la recorta).
+// '' e inválido → null (que la base ponga su default). OJO: 0 es un valor
+// legítimo (un exento factura al 0%), así que no puede caer en la rama de vacío.
+function _cfgParsePct(v){
+  if(v===null||v===undefined) return null;
+  const s=String(v).trim().replace(',','.');
+  if(s==='') return null;                    // Number('') es 0: hay que cortar antes
+  const n=Number(s);
+  return Number.isFinite(n) ? n : null;
 }
-function cargarConfig(){
-  try{const c=JSON.parse(localStorage.getItem('rpos_cfg')||'{}');
-    ['nombre','cuit','dir','tel'].forEach(k=>{const el=document.getElementById('cfg-'+k);if(el&&c[k])el.value=c[k];});
-  }catch(e){}
+// === CONFIG-CORE END ===
+
+async function cargarConfig(){
+  try{
+    const {data,error}=await _sb.from('configuraciones').select('id,nombre_negocio,cuit,direccion,telefono,email,condicion_iva,iva_pct').limit(1);
+    if(error) throw error;
+    if(!data||!data.length) return;
+    const c=data[0];
+    if(_configRowId===null) _configRowId=c.id;
+    const set=(id,val)=>{const el=document.getElementById(id); if(el&&val!==null&&val!==undefined) el.value=val;};
+    set('cfg-nombre',   c.nombre_negocio);
+    set('cfg-cuit',     c.cuit);
+    set('cfg-dir',      c.direccion);
+    set('cfg-tel',      c.telefono);
+    set('cfg-email',    c.email);
+    set('cfg-cond-iva', c.condicion_iva);
+    set('cfg-iva-pct',  c.iva_pct);
+  }catch(e){
+    // Corre en DOMContentLoaded, antes del login: un toast rojo acá sería ruido
+    // en cada carga. Los campos quedan vacíos y el error va a consola.
+    console.warn('No se pudo cargar la configuración:', e.message||e);
+  }
+}
+async function guardarConfig(){
+  const fila={
+    nombre_negocio:document.getElementById('cfg-nombre').value.trim(),
+    cuit:          document.getElementById('cfg-cuit').value.trim(),
+    direccion:     document.getElementById('cfg-dir').value.trim(),
+    telefono:      document.getElementById('cfg-tel').value.trim(),
+    email:         document.getElementById('cfg-email').value.trim(),
+    condicion_iva: document.getElementById('cfg-cond-iva').value
+  };
+  const pct=_cfgParsePct(document.getElementById('cfg-iva-pct').value);
+  if(pct!==null) fila.iva_pct=pct;   // vacío/inválido: no se manda, decide la base
+  try{
+    let error;
+    if(_configRowId){
+      ({error}=await _sb.from('configuraciones').update(fila).eq('id',_configRowId));
+    }else{
+      const {data,error:e}=await _sb.from('configuraciones').insert([fila]).select('id').single();
+      error=e; if(data) _configRowId=data.id;
+    }
+    if(error){ toast('Error guardando la configuración: '+error.message,true); return; }
+    toast('Configuración guardada');
+  }catch(e){
+    toast('Error guardando la configuración: '+(e.message||e),true);
+  }
 }
 
 // ── AUTH ──
@@ -2703,7 +2756,7 @@ function mostrarApp(email){
 // ── INIT ──
 window.addEventListener('DOMContentLoaded',()=>{
   cargarTema();
-  cargarConfig();
+  cargarConfig().catch(e=>console.warn('cargarConfig:',e)); // async, carga desde Supabase
   cargarRubrosSelect(); // async, carga desde Supabase
 
   // nav
@@ -2807,7 +2860,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   });
 
   // config
-  document.getElementById('btn-cfg-guardar').addEventListener('click',guardarConfig);
+  document.getElementById('btn-cfg-guardar').addEventListener('click',()=>{ guardarConfig().catch(e=>toast('Error guardando la configuración: '+(e.message||e),true)); });
   document.querySelectorAll('[data-acc]').forEach(el=>el.addEventListener('click',()=>setAcc(el.getAttribute('data-acc'),el.getAttribute('data-acc2'))));
   document.querySelectorAll('[data-mode]').forEach(el=>el.addEventListener('click',()=>setMode(el.getAttribute('data-mode'))));
 
