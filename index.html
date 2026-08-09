@@ -552,7 +552,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
       <div class="card">
         <div class="card-title">Datos del negocio</div>
-        <div class="fg"><label>Nombre</label><input id="cfg-nombre" value="RepuestOS"></div>
+        <div class="fg"><label>Nombre</label><input id="cfg-nombre" placeholder="Nombre del negocio"></div>
         <div class="fg"><label>CUIT</label><input id="cfg-cuit"></div>
         <div class="fg"><label>Dirección</label><input id="cfg-dir"></div>
         <div class="fg"><label>Teléfono</label><input id="cfg-tel"></div>
@@ -2647,7 +2647,7 @@ async function guardarPin(){
   if(_configRowId){
     ({error}=await _sb.from('configuraciones').update({pin_admin:hash}).eq('id',_configRowId));
   }else{
-    const {data,error:e}=await _sb.from('configuraciones').insert([{pin_admin:hash,nombre_negocio:'RepuestOS'}]).select('id').single();
+    const {data,error:e}=await _sb.from('configuraciones').insert([{pin_admin:hash}]).select('id').single();
     error=e; if(data) _configRowId=data.id;
   }
   if(error){ toast('Error guardando PIN: '+error.message,true); return; }
@@ -2661,8 +2661,9 @@ async function guardarPin(){
 // guardado que nunca salía del navegador.
 
 // === CONFIG-CORE START === normalización PURA de la alícuota (el harness la recorta).
-// '' e inválido → null (que la base ponga su default). OJO: 0 es un valor
-// legítimo (un exento factura al 0%), así que no puede caer en la rama de vacío.
+// '' e inválido → null, y ese null se guarda como NULL en la base. OJO: 0 es un
+// valor legítimo (un exento factura al 0%), así que no puede caer en la rama de
+// vacío: 0% cobrado y "sin dato" no son lo mismo.
 function _cfgParsePct(v){
   if(v===null||v===undefined) return null;
   const s=String(v).trim().replace(',','.');
@@ -2702,8 +2703,9 @@ async function guardarConfig(){
     email:         document.getElementById('cfg-email').value.trim(),
     condicion_iva: document.getElementById('cfg-cond-iva').value
   };
-  const pct=_cfgParsePct(document.getElementById('cfg-iva-pct').value);
-  if(pct!==null) fila.iva_pct=pct;   // vacío/inválido: no se manda, decide la base
+  // Vacío o inválido → NULL explícito. Si un exento borra el campo, el campo
+  // queda borrado: no se conserva el valor previo ni se cae al default de la base.
+  fila.iva_pct=_cfgParsePct(document.getElementById('cfg-iva-pct').value);
   try{
     let error;
     if(_configRowId){
