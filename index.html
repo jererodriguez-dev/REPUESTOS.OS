@@ -1423,10 +1423,10 @@ async function confirmarVenta(){
 
 // ── PROVEEDORES ──
 async function renderProveedores(){
-  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,descuento,activo').is('deleted_at',null).order('nombre');
+  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,activo').is('deleted_at',null).order('nombre');
   document.getElementById('prov-tabla').innerHTML=(data||[]).map(p=>`<tr>
     <td>${p.nombre}</td><td>${p.telefono||'—'}</td><td>${p.email||'—'}</td>
-    <td>${p.descuento||0}%</td>
+    <td>${p.desc1_pct||0}%</td>
     <td><span class="badge ${p.activo?'b-ok':'b-low'}">${p.activo?'Activo':'Inactivo'}</span></td>
   </tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center">Sin proveedores</td></tr>';
 }
