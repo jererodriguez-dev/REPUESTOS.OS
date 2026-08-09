@@ -1676,7 +1676,7 @@ async function impLeerArchivo(file){
 }
 
 // normaliza precios tipo "1.234,56", "1,234.56", "$ 1234"
-// === PRECIOS-CORE START === función PURA del importador de precios (el harness la recorta).
+// === PRECIOS-CORE START === funciones PURAS del importador de precios (el harness las recorta).
 function _impParsePrecio(v){
   if(typeof v==='number') return v;
   if(v==null) return NaN;
@@ -1690,6 +1690,17 @@ function _impParsePrecio(v){
     s=s.replace(/\./g,'');   // punto(s) de miles sin decimales: 65.900 -> 65900
   }
   return parseFloat(s);
+}
+
+// decide qué muestra la columna VAR. de la preview.
+// Sin precio actual (0 o null) NO hay variación que calcular: es un alta de precio
+// inicial. Antes caía a 0 y la celda cantaba "0,0%", o sea un alta disfrazada de
+// "sin cambio" — invisible para el filtro antierrores que viene en Fase 1.
+function _impVariacion(actual,nuevo){
+  if(!(actual>0)) return {alta:true,texto:'ALTA',color:'var(--info)'};
+  const pct=(nuevo-actual)/actual*100;
+  const color=pct>0?'var(--danger)':(pct<0?'var(--success)':'var(--text3)');
+  return {alta:false,pct,texto:(pct>0?'+':'')+pct.toFixed(1)+'%',color};
 }
 // === PRECIOS-CORE END ===
 function _impRedondear(n,paso){
@@ -1732,9 +1743,8 @@ async function impPrevisualizar(){
     let nv='—',vari='',badge='';
     if(p.estado==='ok'){
       nv=fmt(p.nuevo);
-      const dif=p.actual?((p.nuevo-p.actual)/p.actual*100):0;
-      const col=dif>0?'var(--danger)':(dif<0?'var(--success)':'var(--text3)');
-      vari=`<span style="color:${col}">${dif>0?'+':''}${dif.toFixed(1)}%</span>`;
+      const v=_impVariacion(p.actual,p.nuevo);
+      vari=`<span style="color:${v.color}">${v.texto}</span>`;
       badge='<span style="color:var(--success)">✓ Actualiza</span>';
     }else if(p.estado==='sin'){
       badge='<span style="color:var(--text3)">Sin coincidencia</span>';
