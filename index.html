@@ -1487,14 +1487,16 @@ function _provPct(n){return Number(n).toLocaleString('es-AR')+'%';}
 // Cadena de descuentos: "61,08% + 15%". Solo desc1 y desc2 forman el costo
 // siempre; los que están en 0 no se muestran. El pronto pago es condicional, así
 // que va aparte: sumado si entra en el costo, y en gris entre paréntesis si no.
+// El guión es solo para el proveedor sin ningún descuento: si lo único que hay
+// es pronto pago, la cadena arranca directo en él, sin guión ni signo suelto.
 function _provCadena(p){
   const ds=[p.desc1_pct,p.desc2_pct].filter(d=>Number(d)>0).map(_provPct);
-  let s=ds.length?ds.join(' + '):'—';
   const pp=Number(p.desc_pronto_pago_pct)||0;
-  if(pp>0) s+=p.pronto_pago_en_costo
-    ? ' + '+_provPct(pp)+' PP'
-    : ' <span style="color:var(--text3)">('+_provPct(pp)+' PP)</span>';
-  return s;
+  if(!ds.length&&!pp) return '—';
+  if(!pp) return ds.join(' + ');
+  const txt=_provPct(pp)+' PP';
+  if(p.pronto_pago_en_costo) return ds.concat(txt).join(' + ');
+  return (ds.length?ds.join(' + ')+' ':'')+'<span style="color:var(--text3)">('+txt+')</span>';
 }
 async function renderProveedores(){
   const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,desc2_pct,desc_pronto_pago_pct,pronto_pago_en_costo,margen_pct,activo').is('deleted_at',null).order('nombre');
