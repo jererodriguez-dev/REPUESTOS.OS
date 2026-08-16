@@ -1484,14 +1484,20 @@ async function confirmarVenta(){
 
 // ── PROVEEDORES ──
 function _provPct(n){return Number(n).toLocaleString('es-AR')+'%';}
-// Cadena de descuentos encadenados: "61,08% + 15%". Los que están en 0 no se
-// muestran; si no hay ninguno, va el guión.
+// Cadena de descuentos: "61,08% + 15%". Solo desc1 y desc2 forman el costo
+// siempre; los que están en 0 no se muestran. El pronto pago es condicional, así
+// que va aparte: sumado si entra en el costo, y en gris entre paréntesis si no.
 function _provCadena(p){
-  const ds=[p.desc1_pct,p.desc2_pct,p.desc_pronto_pago_pct].filter(d=>Number(d)>0);
-  return ds.length?ds.map(_provPct).join(' + '):'—';
+  const ds=[p.desc1_pct,p.desc2_pct].filter(d=>Number(d)>0).map(_provPct);
+  let s=ds.length?ds.join(' + '):'—';
+  const pp=Number(p.desc_pronto_pago_pct)||0;
+  if(pp>0) s+=p.pronto_pago_en_costo
+    ? ' + '+_provPct(pp)+' PP'
+    : ' <span style="color:var(--text3)">('+_provPct(pp)+' PP)</span>';
+  return s;
 }
 async function renderProveedores(){
-  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,desc2_pct,desc_pronto_pago_pct,margen_pct,activo').is('deleted_at',null).order('nombre');
+  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,desc2_pct,desc_pronto_pago_pct,pronto_pago_en_costo,margen_pct,activo').is('deleted_at',null).order('nombre');
   document.getElementById('prov-tabla').innerHTML=(data||[]).map(p=>`<tr>
     <td>${p.nombre}</td><td>${p.telefono||'—'}</td><td>${p.email||'—'}</td>
     <td>${_provCadena(p)}</td>
