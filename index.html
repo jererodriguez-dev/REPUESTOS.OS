@@ -342,8 +342,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <button class="btn primary" id="btn-nuevo-prov"><i class="ti ti-plus"></i>Nuevo proveedor</button>
     </div>
     <div class="card">
-      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Descuento</th><th>Estado</th></tr></thead>
-      <tbody id="prov-tabla"><tr><td colspan="5" style="color:var(--text3);text-align:center">Cargando...</td></tr></tbody></table>
+      <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Email</th><th>Descuentos</th><th>Margen</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="prov-tabla"><tr><td colspan="7" style="color:var(--text3);text-align:center">Cargando...</td></tr></tbody></table>
     </div>
   </div>
 
@@ -708,6 +708,64 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <button class="btn danger sm" id="btn-eliminar-cli" style="display:none"><i class="ti ti-trash"></i>Eliminar</button>
         <button class="btn sm" id="btn-cancelar-cli">Cancelar</button>
         <button class="btn primary" id="btn-guardar-cli"><i class="ti ti-device-floppy"></i>Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL PROVEEDOR -->
+<div class="modal-bg" id="modal-proveedor">
+  <div class="modal modal-sm">
+    <div class="modal-header">
+      <div class="modal-title" id="prov-title">Nuevo proveedor</div>
+      <button class="btn sm" id="btn-cerrar-prov"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="prov-id">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg"><label>Nombre</label><input id="prov-nombre"></div>
+        <div class="fg"><label>Teléfono</label><input id="prov-tel"></div>
+        <div class="fg"><label>Email</label><input type="email" id="prov-email"></div>
+        <div class="fg"><label>Moneda</label><input id="prov-moneda" value="ARS"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg" style="margin-bottom:0"><label>Descuento 1 (%)</label><input type="number" step="0.01" id="prov-desc1" placeholder="0"></div>
+        <div class="fg" style="margin-bottom:0"><label>Descuento 2 (%)</label><input type="number" step="0.01" id="prov-desc2" placeholder="0"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin:6px 0 12px">Se aplican encadenados: primero el 1, después el 2 sobre el resultado.</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg" style="margin-bottom:0"><label>Descuento pronto pago (%)</label><input type="number" step="0.01" id="prov-pp" placeholder="0"></div>
+        <div class="fg" style="margin-bottom:0"><label>Otros (%)</label><input type="number" step="0.01" id="prov-otros" placeholder="0"></div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin:6px 0 0">Condicional. Si el switch de abajo está apagado, no entra en el costo.</div>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="prov-pp-costo"> Incluir pronto pago en el costo
+      </label>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="prov-iva"> La lista ya incluye IVA
+      </label>
+
+      <div class="fg" style="margin-top:14px;margin-bottom:0"><label>Descuentos ya aplicados en la fuente</label>
+        <select id="prov-origen"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin:6px 0 12px">Cuántos descuentos ya vienen aplicados en el archivo del proveedor. Si el archivo trae precio de lista puro, va 0. Si ya viene con el costo final, va la cantidad que corresponda para no descontar dos veces.</div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div class="fg"><label>Margen (%)</label><input type="number" step="0.01" id="prov-margen" placeholder="Vacío = usa el del rubro"></div>
+      </div>
+
+      <div class="fg"><label>Observación</label><textarea id="prov-obs" rows="2"></textarea></div>
+
+      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer">
+        <input type="checkbox" id="prov-activo" checked> Activo
+      </label>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:14px;margin-top:14px">
+        <button class="btn danger sm" id="btn-eliminar-prov" style="display:none"><i class="ti ti-trash"></i>Eliminar</button>
+        <button class="btn sm" id="btn-cancelar-prov">Cancelar</button>
+        <button class="btn primary" id="btn-guardar-prov"><i class="ti ti-device-floppy"></i>Guardar</button>
       </div>
     </div>
   </div>
@@ -1425,13 +1483,96 @@ async function confirmarVenta(){
 }
 
 // ── PROVEEDORES ──
+function _provPct(n){return Number(n).toLocaleString('es-AR')+'%';}
+// Cadena de descuentos encadenados: "61,08% + 15%". Los que están en 0 no se
+// muestran; si no hay ninguno, va el guión.
+function _provCadena(p){
+  const ds=[p.desc1_pct,p.desc2_pct,p.desc_pronto_pago_pct].filter(d=>Number(d)>0);
+  return ds.length?ds.map(_provPct).join(' + '):'—';
+}
 async function renderProveedores(){
-  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,activo').is('deleted_at',null).order('nombre');
+  const {data}=await _sb.from('proveedores').select('id,nombre,telefono,email,desc1_pct,desc2_pct,desc_pronto_pago_pct,margen_pct,activo').is('deleted_at',null).order('nombre');
   document.getElementById('prov-tabla').innerHTML=(data||[]).map(p=>`<tr>
     <td>${p.nombre}</td><td>${p.telefono||'—'}</td><td>${p.email||'—'}</td>
-    <td>${p.desc1_pct||0}%</td>
+    <td>${_provCadena(p)}</td>
+    <td>${p.margen_pct==null?'—':_provPct(p.margen_pct)}</td>
     <td><span class="badge ${p.activo?'b-ok':'b-low'}">${p.activo?'Activo':'Inactivo'}</span></td>
-  </tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center">Sin proveedores</td></tr>';
+    <td><button class="btn sm" onclick="editarProveedor('${p.id}')"><i class="ti ti-edit"></i></button></td>
+  </tr>`).join('')||'<tr><td colspan="7" style="color:var(--text3);text-align:center">Sin proveedores</td></tr>';
+}
+
+// ── PROVEEDOR (alta/edición) ──
+function abrirNuevoProveedor(){
+  document.getElementById('prov-title').textContent='Nuevo proveedor';
+  document.getElementById('prov-id').value='';
+  // margen queda vacío a propósito: vacío = NULL = "usá el margen del rubro".
+  ['prov-nombre','prov-tel','prov-email','prov-obs','prov-margen'].forEach(id=>document.getElementById(id).value='');
+  ['prov-desc1','prov-desc2','prov-pp','prov-otros'].forEach(id=>document.getElementById(id).value='0');
+  document.getElementById('prov-moneda').value='ARS';
+  document.getElementById('prov-origen').value='0';
+  document.getElementById('prov-pp-costo').checked=false;
+  document.getElementById('prov-iva').checked=false;
+  document.getElementById('prov-activo').checked=true;
+  document.getElementById('btn-eliminar-prov').style.display='none';
+  openModal('modal-proveedor');
+}
+async function editarProveedor(id){
+  // maybeSingle() y no single(): con 0 filas single() devuelve error (bug F0.3).
+  const {data:p}=await _sb.from('proveedores').select('*').eq('id',id).maybeSingle();
+  if(!p) return;
+  document.getElementById('prov-title').textContent='Editar proveedor';
+  document.getElementById('prov-id').value=p.id;
+  document.getElementById('prov-nombre').value=p.nombre||'';
+  document.getElementById('prov-tel').value=p.telefono||'';
+  document.getElementById('prov-email').value=p.email||'';
+  document.getElementById('prov-desc1').value=p.desc1_pct||0;
+  document.getElementById('prov-desc2').value=p.desc2_pct||0;
+  document.getElementById('prov-pp').value=p.desc_pronto_pago_pct||0;
+  document.getElementById('prov-otros').value=p.otros_pct||0;
+  document.getElementById('prov-pp-costo').checked=!!p.pronto_pago_en_costo;
+  document.getElementById('prov-iva').checked=!!p.lista_incluye_iva;
+  document.getElementById('prov-origen').value=String(p.descuentos_aplicados_origen_default||0);
+  // NULL se carga como campo vacío, NO como 0: son cosas distintas.
+  document.getElementById('prov-margen').value=p.margen_pct==null?'':p.margen_pct;
+  document.getElementById('prov-moneda').value=p.moneda||'ARS';
+  document.getElementById('prov-obs').value=p.observacion||'';
+  document.getElementById('prov-activo').checked=p.activo!==false;
+  document.getElementById('btn-eliminar-prov').style.display='inline-flex';
+  openModal('modal-proveedor');
+}
+async function guardarProveedor(){
+  const nombre=document.getElementById('prov-nombre').value.trim();
+  if(!nombre){toast('El nombre es requerido',true);return;}
+  // margen_pct vacío guarda NULL, no 0. NULL = "usá el margen del rubro";
+  // 0 = "vendé al costo". Por eso acá NO va el parseFloat(x)||0 del resto.
+  const mv=document.getElementById('prov-margen').value.trim();
+  const margen=mv===''?null:parseFloat(mv);
+  const obj={nombre,
+    telefono:document.getElementById('prov-tel').value||null,
+    email:document.getElementById('prov-email').value||null,
+    desc1_pct:parseFloat(document.getElementById('prov-desc1').value)||0,
+    desc2_pct:parseFloat(document.getElementById('prov-desc2').value)||0,
+    desc_pronto_pago_pct:parseFloat(document.getElementById('prov-pp').value)||0,
+    pronto_pago_en_costo:document.getElementById('prov-pp-costo').checked,
+    otros_pct:parseFloat(document.getElementById('prov-otros').value)||0,
+    lista_incluye_iva:document.getElementById('prov-iva').checked,
+    descuentos_aplicados_origen_default:parseInt(document.getElementById('prov-origen').value,10)||0,
+    margen_pct:Number.isFinite(margen)?margen:null,
+    moneda:document.getElementById('prov-moneda').value.trim()||'ARS',
+    observacion:document.getElementById('prov-obs').value||null,
+    activo:document.getElementById('prov-activo').checked};
+  const idExist=document.getElementById('prov-id').value;
+  const {error}=idExist?await _sb.from('proveedores').update(obj).eq('id',idExist):await _sb.from('proveedores').insert([obj]);
+  // Si Supabase falla, el modal queda abierto con los datos cargados.
+  if(error){toast('Error: '+error.message,true);return;}
+  closeModal('modal-proveedor'); toast(idExist?'Proveedor actualizado':'Proveedor agregado'); renderProveedores();
+}
+async function eliminarProveedor(){
+  if(!confirm('¿Eliminar este proveedor?')) return;
+  const id=document.getElementById('prov-id').value;
+  const {error}=await _sb.from('proveedores').update({deleted_at:new Date().toISOString()}).eq('id',id);
+  if(error){toast('Error: '+error.message,true);return;}
+  closeModal('modal-proveedor'); toast('Eliminado'); renderProveedores();
 }
 
 // ── ADMIN ──
@@ -2790,6 +2931,13 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('btn-eliminar-cli').addEventListener('click',eliminarCliente);
   document.getElementById('btn-cerrar-cli').addEventListener('click',()=>closeModal('modal-cliente'));
   document.getElementById('btn-cancelar-cli').addEventListener('click',()=>closeModal('modal-cliente'));
+
+  // proveedor
+  document.getElementById('btn-nuevo-prov').addEventListener('click',abrirNuevoProveedor);
+  document.getElementById('btn-guardar-prov').addEventListener('click',guardarProveedor);
+  document.getElementById('btn-eliminar-prov').addEventListener('click',eliminarProveedor);
+  document.getElementById('btn-cerrar-prov').addEventListener('click',()=>closeModal('modal-proveedor'));
+  document.getElementById('btn-cancelar-prov').addEventListener('click',()=>closeModal('modal-proveedor'));
 
   // ventas
   document.getElementById('venta-search').addEventListener('input',buscarVenta);
