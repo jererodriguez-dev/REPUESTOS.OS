@@ -2069,6 +2069,14 @@ function _catResolverRubro(nombreHoja, rubrosDB, aliasDB){
   return null;
 }
 
+// ¿es una hoja de ayuda de la planilla (_INSTRUCCIONES, _PLANTILLA…)? El `_` inicial la
+// marca como "esto no son datos". Se trimea porque Excel a veces deja un espacio adelante.
+// El `_` sólo cuenta al principio: RULEMANES_2026 es una hoja de datos.
+function _catHojaIgnorada(nombreHoja){
+  if(typeof nombreHoja!=='string') return false;   // null/undefined/número → que siga el camino de siempre
+  return nombreHoja.trim().startsWith('_');
+}
+
 // ventana visible para virtualización del preview: índices [start,end) a renderizar.
 // rel = scrollTop - alto del header sticky; clamp a [0,total]. Es pura → testeable.
 function _catVWindow(scrollTop, viewportH, rowH, colsH, total, over){
@@ -2248,11 +2256,21 @@ async function catLeerArchivo(file){
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(buf,{type:'array'});
     _catEsCSV=/\.csv$/i.test(file.name);
-    _catHojas=wb.SheetNames.map(nombre=>{
+    const todasLasHojas=wb.SheetNames.map(nombre=>{
       const rows=XLSX.utils.sheet_to_json(wb.Sheets[nombre],{defval:''});
       return {nombre, rows, headers:rows.length?Object.keys(rows[0]):[], rubroId:null, rubroNombre:null};
-    }).filter(h=>h.rows.length);
-    if(!_catHojas.length){toast('El archivo está vacío',true);return;}
+    });
+    const ignoradas=todasLasHojas.filter(h=>_catHojaIgnorada(h.nombre)).map(h=>h.nombre);
+    _catHojas=todasLasHojas.filter(h=>h.rows.length && !_catHojaIgnorada(h.nombre));
+    if(!_catHojas.length){
+      // si el libro trae SOLO hojas de ayuda, "está vacío" sería mentira y confunde
+      const soloAyuda=todasLasHojas.length>0 && ignoradas.length===todasLasHojas.length;
+      toast(soloAyuda?'Todas las hojas del archivo son hojas de ayuda (empiezan con _)':'El archivo está vacío',true);
+      return;
+    }
+    if(ignoradas.length) toast(ignoradas.length===1
+      ? `Se ignoró 1 hoja de ayuda (${ignoradas[0]})`
+      : `Se ignoraron ${ignoradas.length} hojas de ayuda (${ignoradas.join(', ')})`);
 
     // mapeo: unión de headers de todas las hojas
     const setH=new Set(); _catHojas.forEach(h=>h.headers.forEach(x=>setH.add(x)));
