@@ -62,6 +62,10 @@ body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;fon
 /* FORMS */
 input,select,textarea{padding:7px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-size:12px;outline:none;font-family:inherit;width:100%}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
+/* La regla de arriba es para inputs de texto: al checkbox le estiraba el cuadrito
+   a todo el ancho y el fondo le tapaba el tilde. */
+input[type=checkbox]{width:auto;min-width:0;flex:0 0 auto;padding:0;background:initial;border:none;accent-color:var(--accent);cursor:pointer}
+label.chk{display:flex;align-items:center;gap:7px;margin:0;font-size:12px;letter-spacing:0;text-transform:none;color:var(--text2);cursor:pointer}
 select option{background:var(--bg3)}
 label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:4px}
 .fg{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
@@ -740,10 +744,10 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg" style="margin-bottom:0"><label>Otros (%)</label><input type="number" step="0.01" id="prov-otros" placeholder="0"></div>
       </div>
       <div style="font-size:11px;color:var(--text3);margin:6px 0 0">Condicional. Si el switch de abajo está apagado, no entra en el costo.</div>
-      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer">
+      <label class="chk" style="margin-top:10px">
         <input type="checkbox" id="prov-pp-costo"> Incluir pronto pago en el costo
       </label>
-      <label style="display:flex;align-items:center;gap:7px;margin-top:10px;font-size:12px;color:var(--text2);cursor:pointer">
+      <label class="chk" style="margin-top:10px">
         <input type="checkbox" id="prov-iva"> La lista ya incluye IVA
       </label>
 
@@ -758,7 +762,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
 
       <div class="fg"><label>Observación</label><textarea id="prov-obs" rows="2"></textarea></div>
 
-      <label style="display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text2);cursor:pointer">
+      <label class="chk">
         <input type="checkbox" id="prov-activo" checked> Activo
       </label>
 
