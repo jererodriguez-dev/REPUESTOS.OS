@@ -469,7 +469,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
           Subí un Excel (.xlsx) — cada <b style="color:var(--text)">hoja = un rubro</b> — o un CSV (una hoja, elegís el rubro).
           Se previsualiza por hoja y <b style="color:var(--text)">nada se aplica hasta confirmar</b>.
-          Da de alta artículos nuevos y actualiza descripción/marca/rubro de los existentes (el stock solo se carga en altas).
+          Da de alta artículos nuevos y actualiza descripción/marca de los existentes (el stock solo se carga en altas).
+          El <b style="color:var(--text)">rubro de un artículo que ya existe no se modifica</b>: sólo se asigna a los nuevos.
         </p>
         <label class="btn sm primary" style="cursor:pointer">
           <i class="ti ti-upload"></i> Elegir archivo
@@ -2138,7 +2139,9 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           if(existente){
             const esRevive=!!existente.deleted_at;   // fila soft-deleted: el código UNIQUE ya está ocupado → revivir, no INSERT
             estado=esRevive?'reviv':'upd'; upd++; if(esRevive) reviv++;
-            const payload={descripcion, marca_articulo:marca_art||null, rubro_id:h.rubroId};
+            // OJO: sin rubro_id. El rubro de un artículo que ya existe lo decide Jere, no el archivo:
+            // reimportar no reclasifica lo que ya estaba clasificado a mano. Sólo las altas toman rubro.
+            const payload={descripcion, marca_articulo:marca_art||null};
             if(codigo_barra) payload.codigo_barra=codigo_barra;
             if(ubicacion) payload.ubicacion=ubicacion;
             // snapshot de los valores que vamos a pisar, para poder DESHACER esta importación
@@ -2436,7 +2439,7 @@ function _catVirtRowHtml(it, top, h){
     return `<div style="${base};display:flex;align-items:center;gap:5px;padding:0 6px;background:var(--bg2);font-size:11.5px;white-space:nowrap;overflow:hidden">
       <b><i class="ti ti-table"></i> ${_escAttr(g.hoja)}</b><span style="color:var(--text3)">→</span><b style="color:var(--accent)">${_escAttr(g.rubro)}</b>
       <span style="color:var(--text3)">·</span><span style="color:var(--success)">${g.nuevos} nuevos</span>
-      <span style="color:var(--text3)">·</span><span style="color:var(--info)">${g.upd} a actualizar</span>
+      <span style="color:var(--text3)">·</span><span style="color:var(--info)">${g.upd} a actualizar</span>${g.upd?`<span style="color:var(--text3)">(conservan su rubro)</span>`:''}
       ${g.reviv?`<span style="color:var(--text3)">·</span><span style="color:var(--accent)">${g.reviv} revividos</span>`:''}
       <span style="color:var(--text3)">·</span><span style="color:${g.err?'var(--danger)':'var(--text3)'}">${g.err} con error</span>
       <span style="color:var(--text3)">· ${g.totalValidas} filas · se aplican todas</span></div>`;
