@@ -2110,6 +2110,9 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 
   const vistosCod=new Map();   // cl -> {existente}: código ya visto en el archivo (mismo artículo, +aplicaciones)
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código)
+  // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
+  // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
+  const grupos=new Map();      // rubroId (o '__sin__') -> bloque del preview
 
   (hojas||[]).forEach(h=>{
     let nuevos=0,upd=0,err=0,reviv=0; const filas=[];
@@ -2175,8 +2178,15 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       // fila compacta para el preview virtualizado: NO guardo el array de apps, sólo nº y la primera
       if(estado!=='err') filas.push({codigo, descripcion, marca_art, stock, estado, na:apps.length, a0:apps.length?{marca:apps[0].marca, modelo:apps[0].modelo, motor:apps[0].motor}:null});
     });
-    plan.preview.push({hoja:h.nombre, rubro:h.rubroNombre, nuevos, upd, reviv, err, filas, totalValidas:filas.length});
+    const gk=h.rubroId==null?'__sin__':h.rubroId;
+    let g=grupos.get(gk);
+    if(!g){ g={rubroId:h.rubroId, rubro:h.rubroNombre, hojas:[], nuevos:0, upd:0, reviv:0, err:0, filas:[], totalValidas:0}; grupos.set(gk,g); }
+    if(!g.hojas.includes(h.nombre)) g.hojas.push(h.nombre);
+    g.nuevos+=nuevos; g.upd+=upd; g.reviv+=reviv; g.err+=err;
+    for(let i=0;i<filas.length;i++) g.filas.push(filas[i]);   // sin spread: filas puede ser enorme
+    g.totalValidas=g.filas.length;
   });
+  grupos.forEach(g=>plan.preview.push(g));   // orden = primera aparición del rubro
   plan.resumen={ nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
@@ -2437,7 +2447,7 @@ function _catVirtRowHtml(it, top, h){
   if(it.t==='h'){
     const g=it.g;
     return `<div style="${base};display:flex;align-items:center;gap:5px;padding:0 6px;background:var(--bg2);font-size:11.5px;white-space:nowrap;overflow:hidden">
-      <b><i class="ti ti-table"></i> ${_escAttr(g.hoja)}</b><span style="color:var(--text3)">→</span><b style="color:var(--accent)">${_escAttr(g.rubro)}</b>
+      <b><i class="ti ti-table"></i> ${_escAttr(g.hojas.join(' · '))}</b><span style="color:var(--text3)">→</span><b style="color:var(--accent)">${_escAttr(g.rubro)}</b>
       <span style="color:var(--text3)">·</span><span style="color:var(--success)">${g.nuevos} nuevos</span>
       <span style="color:var(--text3)">·</span><span style="color:var(--info)">${g.upd} a actualizar</span>${g.upd?`<span style="color:var(--text3)">(conservan su rubro)</span>`:''}
       ${g.reviv?`<span style="color:var(--text3)">·</span><span style="color:var(--accent)">${g.reviv} revividos</span>`:''}
