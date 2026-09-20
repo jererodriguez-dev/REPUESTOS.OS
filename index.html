@@ -1981,7 +1981,10 @@ const CAT_CAMPOS=[
   {key:'motor',       label:'Motor',            cands:['motor','motorizacion']},
   {key:'aplic',       label:'Aplicaciones',     cands:['aplicaciones','aplicacion','aplic','compatibilidad','vehiculos','vehiculo']},
   {key:'stock',       label:'Stock',            cands:['cantidad','existencia','cant','stock']},
-  {key:'ubicacion',   label:'Ubicación',        cands:['ubicacion','ubic','estante','deposito','posicion','lugar']}
+  {key:'ubicacion',   label:'Ubicación',        cands:['ubicacion','ubic','estante','deposito','posicion','lugar']},
+  // F1.0c-2: va ÚLTIMO a propósito. _catAutodetect marca las columnas como usadas en el
+  // orden de esta lista, así que ningún campo de arriba puede perder su columna por éste.
+  {key:'rubro',       label:'Rubro',            cands:['rubro','rubros','categoria','familia','tipo de producto']}
 ];
 
 // normaliza: minúsculas, sin acentos, espacios colapsados, trim
@@ -2094,7 +2097,9 @@ function _catVWindow(scrollTop, viewportH, rowH, colsH, total, over){
 // la descripción se recomputa SIEMPRE desde la planilla (no crece al reimportar).
 //   hojas: [{nombre, rows, rubroId, rubroNombre}]
 //   map:   {codigo,codigo_barra,descripcion,marca_art,marca_apl,modelo,motor,aplic,stock,ubicacion}
-//   opts:  {separarAplic:boolean}
+//   opts:  {separarAplic:boolean, rubroFuente:'hoja'|'columna', rubrosResueltos:{valorNormalizado:{rubroId,rubroNombre}}}
+//          rubroFuente ausente o 'hoja' = comportamiento de siempre. La resolución de los
+//          valores de la columna la hace la UI ANTES y la pasa hecha: esta función es PURA.
 //   dbArticulos:    [{id, codigo_articulo}]               (activos)
 //   dbAplicaciones: [{id_articulo, marca, modelo, motor}] (de esos artículos)
 function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
@@ -2105,7 +2110,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const dbApl=new Set();
   (dbAplicaciones||[]).forEach(a=>dbApl.add(_catAplKey(a.id_articulo,a.marca,a.modelo,a.motor)));
 
-  const plan={ articulos:{insert:[],update:[],error:[]}, aplicaciones:{insert:[],skip:[]}, noParseados:[], warnings:[], preview:[] };
+  const plan={ articulos:{insert:[],update:[],error:[]}, aplicaciones:{insert:[],skip:[]}, noParseados:[], warnings:[], preview:[], rubrosPendientes:[] };
   if(sep && !map.aplic) plan.warnings.push('Activaste “separar por ///” pero no mapeaste la columna Aplicaciones.');
 
   const vistosCod=new Map();   // cl -> {existente}: código ya visto en el archivo (mismo artículo, +aplicaciones)
@@ -2113,11 +2118,30 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
   const grupos=new Map();      // rubroId (o '__sin__') -> bloque del preview
+  // F1.0c-2: el rubro puede salir de una COLUMNA, y entonces se resuelve fila por fila.
+  const porColumna=opts.rubroFuente==='columna' && !!map.rubro;
+  const dicc=opts.rubrosResueltos||{};
+  const pendMap=new Map();     // valor normalizado -> {valor, filas}: lo que no resolvió
 
   (hojas||[]).forEach(h=>{
-    let nuevos=0,upd=0,err=0,reviv=0; const filas=[];
     (h.rows||[]).forEach(r=>{
       const get=k=>map[k]?String(r[map[k]]==null?'':r[map[k]]).trim():'';
+      // cadena del rubro de ESTA fila: valor de la columna → diccionario ya resuelto;
+      // celda vacía → rubro de la hoja (una planilla mixta sigue andando);
+      // no resuelve → PENDIENTE, y la fila no se importa ni aparece en el preview.
+      let filaRubroId=h.rubroId, filaRubroNombre=h.rubroNombre;
+      if(porColumna){
+        const vRaw=get('rubro');
+        if(vRaw){
+          const res=dicc[_normTxt(vRaw)];
+          if(res){ filaRubroId=res.rubroId; filaRubroNombre=res.rubroNombre; }
+          else{
+            const vn=_normTxt(vRaw); const p=pendMap.get(vn);
+            if(p) p.filas++; else pendMap.set(vn,{valor:vRaw, filas:1});
+            return;
+          }
+        }
+      }
       const codigo=get('codigo');
       const descBase=get('descripcion');
       const aplicTxt=get('aplic');
@@ -2130,8 +2154,8 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 
       let estado, existente=null, apps=[];
       const cl=codigo.toLowerCase();
-      if(!codigo){ estado='err'; err++; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta código'}); }
-      else if(!vistosCod.has(cl) && !descripcion){ estado='err'; err++; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta descripción'}); }
+      if(!codigo){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta código'}); }
+      else if(!vistosCod.has(cl) && !descripcion){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta descripción'}); }
       else{
         if(vistosCod.has(cl)){
           // mismo código repetido → mismo artículo, sólo suma aplicaciones (plantilla: "mismo código = otra aplicación")
@@ -2141,7 +2165,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           vistosCod.set(cl,{existente});
           if(existente){
             const esRevive=!!existente.deleted_at;   // fila soft-deleted: el código UNIQUE ya está ocupado → revivir, no INSERT
-            estado=esRevive?'reviv':'upd'; upd++; if(esRevive) reviv++;
+            estado=esRevive?'reviv':'upd';
             // OJO: sin rubro_id. El rubro de un artículo que ya existe lo decide Jere, no el archivo:
             // reimportar no reclasifica lo que ya estaba clasificado a mano. Sólo las altas toman rubro.
             const payload={descripcion, marca_articulo:marca_art||null};
@@ -2152,8 +2176,8 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             if(esRevive){ payload.deleted_at=null; antes.deleted_at=existente.deleted_at; }   // revivir; deshacer vuelve a soft-deletear
             plan.articulos.update.push({id:existente.id, codigo, payload, antes, reviv:esRevive});
           }else{
-            estado='nuevo'; nuevos++;
-            plan.articulos.insert.push({codigo, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:h.rubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
+            estado='nuevo';
+            plan.articulos.insert.push({codigo, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
           }
         }
         // aplicaciones: del choricito (sep ON) o de las columnas estructuradas (sep OFF)
@@ -2175,18 +2199,26 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           plan.aplicaciones.insert.push({codigo, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, anio_desde:ap.anio_desde||null, anio_hasta:ap.anio_hasta||null});
         });
       }
-      // fila compacta para el preview virtualizado: NO guardo el array de apps, sólo nº y la primera
-      if(estado!=='err') filas.push({codigo, descripcion, marca_art, stock, estado, na:apps.length, a0:apps.length?{marca:apps[0].marca, modelo:apps[0].modelo, motor:apps[0].motor}:null});
+      // el bloque del preview lo elige el rubro de LA FILA, no el de la hoja (F1.0c-2).
+      // Con rubroFuente 'hoja' todas las filas de una hoja caen en el mismo grupo: idéntico a antes.
+      const gk=filaRubroId==null?'__sin__':filaRubroId;
+      let g=grupos.get(gk);
+      if(!g){ g={rubroId:filaRubroId, rubro:filaRubroNombre, hojas:[], nuevos:0, upd:0, reviv:0, err:0, filas:[], totalValidas:0}; grupos.set(gk,g); }
+      if(!g.hojas.includes(h.nombre)) g.hojas.push(h.nombre);
+      if(estado==='err') g.err++;
+      else{
+        if(estado==='nuevo') g.nuevos++;
+        else if(estado==='upd'||estado==='reviv'){ g.upd++; if(estado==='reviv') g.reviv++; }
+        // fila compacta para el preview virtualizado: NO guardo el array de apps, sólo nº y la primera
+        g.filas.push({codigo, descripcion, marca_art, stock, estado, na:apps.length, a0:apps.length?{marca:apps[0].marca, modelo:apps[0].modelo, motor:apps[0].motor}:null});
+        g.totalValidas=g.filas.length;
+      }
     });
-    const gk=h.rubroId==null?'__sin__':h.rubroId;
-    let g=grupos.get(gk);
-    if(!g){ g={rubroId:h.rubroId, rubro:h.rubroNombre, hojas:[], nuevos:0, upd:0, reviv:0, err:0, filas:[], totalValidas:0}; grupos.set(gk,g); }
-    if(!g.hojas.includes(h.nombre)) g.hojas.push(h.nombre);
-    g.nuevos+=nuevos; g.upd+=upd; g.reviv+=reviv; g.err+=err;
-    for(let i=0;i<filas.length;i++) g.filas.push(filas[i]);   // sin spread: filas puede ser enorme
-    g.totalValidas=g.filas.length;
   });
   grupos.forEach(g=>plan.preview.push(g));   // orden = primera aparición del rubro
+  // valores de la columna Rubro que no resolvieron, con cuántas filas dependen de cada uno.
+  // NO son un error de la fila: es un dato que falta resolver, y se pregunta en otra pantalla.
+  pendMap.forEach(p=>plan.rubrosPendientes.push({valor:p.valor, filas:p.filas}));
   plan.resumen={ nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
@@ -2249,7 +2281,7 @@ function _catContarPorRubro(articulos){
 
 // genera y descarga una plantilla .xlsx con los encabezados que el importador reconoce
 function catDescargarPlantilla(){
-  const headers=CAT_CAMPOS.filter(c=>c.key!=='aplic').map(c=>c.label); // labels que usa la autodetección → se mapea solo (la columna "Aplicaciones ///" es modo alternativo, no va en la plantilla)
+  const headers=CAT_CAMPOS.filter(c=>c.key!=='aplic'&&c.key!=='rubro').map(c=>c.label); // labels que usa la autodetección → se mapea solo (la columna "Aplicaciones ///" es modo alternativo, no va en la plantilla)
   const ejemplos=[
     ['RLM-6204','7891234560012','Ruleman rueda delantera','SKF','Renault','Clio','K7M',4,'A-12'],
     ['RLM-6204','7891234560012','Ruleman rueda delantera','SKF','Renault','Kangoo','K9K',4,'A-12'], // mismo código = otra aplicación
@@ -2292,6 +2324,7 @@ async function catLeerArchivo(file){
     const auto=_catAutodetect(headers);
     CAT_CAMPOS.forEach(c=>{
       const sel=document.getElementById('cat-col-'+c.key);
+      if(!sel) return;
       sel.innerHTML=opts; sel.value=auto[c.key]||'';
     });
     document.getElementById('cat-mapeo').style.display='block';
@@ -2399,7 +2432,7 @@ async function _sbSelectAll(buildQuery, pageSize=1000){
 // === SELECTALL-CORE END ===
 
 async function catPrevisualizar(){
-  const map={}; CAT_CAMPOS.forEach(c=>map[c.key]=document.getElementById('cat-col-'+c.key).value);
+  const map={}; CAT_CAMPOS.forEach(c=>{ const el=document.getElementById('cat-col-'+c.key); map[c.key]=el?el.value:''; });
   if(!map.codigo||!map.descripcion){toast('Mapeá al menos Código y Descripción',true);return;}
   if(map.codigo===map.descripcion){toast('Código y Descripción no pueden ser la misma columna',true);return;}
   const sep=document.getElementById('cat-sep-aplic').checked;
