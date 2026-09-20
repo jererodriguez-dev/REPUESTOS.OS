@@ -467,7 +467,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="card">
         <div class="card-title"><i class="ti ti-file-import"></i> Importar catálogo</div>
         <p style="font-size:11px;color:var(--text2);margin:0 0 12px;line-height:1.5">
-          Subí un Excel (.xlsx) — cada <b style="color:var(--text)">hoja = un rubro</b> — o un CSV (una hoja, elegís el rubro).
+          Subí un Excel (.xlsx) o un CSV. El <b style="color:var(--text)">rubro</b> puede salir del <b style="color:var(--text)">nombre de la hoja</b> o de una <b style="color:var(--text)">columna del archivo</b>: se elige abajo, en el mapeo.
           Se previsualiza por hoja y <b style="color:var(--text)">nada se aplica hasta confirmar</b>.
           Da de alta artículos nuevos y actualiza descripción/marca de los existentes (el stock solo se carga en altas).
           El <b style="color:var(--text)">rubro de un artículo que ya existe no se modifica</b>: sólo se asigna a los nuevos.
@@ -504,6 +504,11 @@ tr:hover td{background:var(--bg3);color:var(--text)}
           <div class="fg" style="margin-bottom:0"><label>Aplicaciones <span style="color:var(--text3);text-transform:none">(celda ///)</span></label><select id="cat-col-aplic"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Stock</label><select id="cat-col-stock"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Ubicación</label><select id="cat-col-ubicacion"></select></div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
+          <label style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin:0">Rubro</label>
+          <select id="cat-col-rubro" style="max-width:240px"></select>
+          <span id="cat-rubro-hint" style="font-size:11px;color:var(--text3)"></span>
         </div>
         <label style="display:flex;align-items:center;gap:7px;margin-top:12px;font-size:12px;color:var(--text2);cursor:pointer">
           <input type="checkbox" id="cat-sep-aplic"> Separar la columna <b style="color:var(--text)">Aplicaciones</b> por <code>///</code> en aplicaciones
@@ -1957,9 +1962,15 @@ let _catHojas=[];    // [{nombre, rows, headers, rubroId, rubroNombre}]
 let _catEsCSV=false;
 let _catPlan=null;   // plan calculado por _catPlanImport en la previsualización
 let _catVirt=null;   // estado de la virtualización del cuerpo del preview
+// F1.0c-2: de dónde sale el rubro. 'hoja' = nombre de la hoja (lo de siempre) · 'columna' = una columna del archivo.
+let _catFuenteRubro='hoja';
+let _catColRubro='';        // nombre de la columna elegida, cuando la fuente es 'columna'
+let _catRubrosResueltos={}; // {valorNormalizado: {rubroId, rubroNombre}} — lo que ya resolvió
+let _catPendCol=[];         // [{valor, norm, filas}] — valores de la columna que NO resolvieron
 
 function initImportCat(){
   _catHojas=[]; _catEsCSV=false; _catPlan=null;
+  _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
   document.getElementById('cat-filename').textContent='';
   ['cat-csv-wrap','cat-rubros-wrap','cat-mapeo','cat-preview-wrap'].forEach(id=>document.getElementById(id).style.display='none');
   const f=document.getElementById('cat-file'); if(f) f.value='';
@@ -2327,6 +2338,15 @@ async function catLeerArchivo(file){
       if(!sel) return;
       sel.innerHTML=opts; sel.value=auto[c.key]||'';
     });
+    // el selector de RUBRO no es una columna más: su opción vacía significa "usá el nombre de la hoja"
+    _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
+    const selRub=document.getElementById('cat-col-rubro');
+    if(selRub){
+      selRub.innerHTML='<option value="">— nombre de la hoja —</option>'+headers.map(h=>`<option value="${_escAttr(h)}">${_escAttr(h)}</option>`).join('');
+      selRub.value='';   // default explícito: se comporta como siempre hasta que Jere elija una columna
+      const hint=document.getElementById('cat-rubro-hint');
+      if(hint) hint.innerHTML=auto.rubro?`detecté una columna <b>${_escAttr(auto.rubro)}</b> en el archivo — elegila si el rubro está ahí`:'';
+    }
     document.getElementById('cat-mapeo').style.display='block';
     document.getElementById('cat-preview-wrap').style.display='none';
 
@@ -2343,6 +2363,41 @@ async function catLeerArchivo(file){
   }catch(e){toast('No se pudo leer el archivo',true);}
 }
 
+// F1.0c-2 — ¿esta hoja todavía necesita un rubro propio? Con la fuente en 'columna', sólo
+// lo necesita si alguna de sus filas tiene la celda de rubro vacía (planilla mixta).
+function _catHojaNecesitaRubro(h){
+  if(_catFuenteRubro!=='columna' || !_catColRubro) return true;
+  return (h.rows||[]).some(r=>!String(r[_catColRubro]==null?'':r[_catColRubro]).trim());
+}
+
+// F1.0c-2 — recorre las filas, junta los VALORES DISTINTOS de la columna elegida y resuelve
+// cada uno con la misma cadena de siempre (nombre exacto normalizado → alias). Lo que no
+// resuelve queda en _catPendCol con cuántas filas depende de él. NUNCA crea un rubro solo.
+function _catResolverColumnaRubro(){
+  _catRubrosResueltos={}; const pend=new Map();
+  (_catHojas||[]).forEach(h=>(h.rows||[]).forEach(r=>{
+    const v=String(r[_catColRubro]==null?'':r[_catColRubro]).trim();
+    if(!v) return;                                   // celda vacía → cae al rubro de la hoja
+    const n=_normTxt(v);
+    if(_catRubrosResueltos[n]) return;
+    const p=pend.get(n);
+    if(p){ p.filas++; return; }
+    const res=_catResolverRubro(v, rubrosDB, aliasDB);
+    if(res) _catRubrosResueltos[n]={rubroId:res.rubroId, rubroNombre:res.rubroNombre};
+    else pend.set(n,{valor:v, norm:n, filas:1});
+  }));
+  _catPendCol=[...pend.values()];
+}
+
+// el usuario cambió de dónde sale el rubro
+function catCambiarFuenteRubro(col){
+  _catColRubro=col||'';
+  _catFuenteRubro=_catColRubro?'columna':'hoja';
+  if(_catFuenteRubro==='columna') _catResolverColumnaRubro();
+  else { _catRubrosResueltos={}; _catPendCol=[]; }
+  catRenderRubros();
+}
+
 // resuelve por nombre de hoja (o alias guardado) sólo las que aún no tienen rubro (preserva asignaciones manuales)
 function _catResolverRubros(){
   _catHojas.forEach(h=>{
@@ -2353,23 +2408,73 @@ function _catResolverRubros(){
   });
 }
 
-function catRenderRubros(){
-  const pend=_catHojas.map((h,i)=>({h,i})).filter(o=>!o.h.rubroId);
-  const wrap=document.getElementById('cat-rubros-wrap');
-  if(!pend.length){ wrap.style.display='none'; return; }
-  const ropts=rubrosDB.map(r=>`<option value="${r.id}">${_escAttr(r.nombre)}</option>`).join('');
-  document.getElementById('cat-rubros-lista').innerHTML=pend.map(o=>`
+// F1.0c-2 — la misma pantalla pregunta por DOS cosas: hojas sin rubro (como siempre) y
+// valores de la columna Rubro que no resolvieron, con cuántas filas depende cada uno.
+// tipo: 'h' = hoja · 'v' = valor de columna. Los ids llevan el tipo para no chocar.
+function _catRubroPendHtml(tipo, idx, texto, icono, detalle, ropts){
+  const asignar=tipo==='h'?'catAsignarRubro':'catAsignarRubroValor';
+  const crear=tipo==='h'?'catCrearRubro':'catCrearRubroValor';
+  return `
     <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-      <span style="font-size:12px;min-width:150px"><i class="ti ti-table"></i> ${_escAttr(o.h.nombre)}</span>
+      <span style="font-size:12px;min-width:150px"><i class="ti ti-${icono}"></i> ${_escAttr(texto)}${detalle}</span>
       <i class="ti ti-arrow-right" style="color:var(--text3)"></i>
-      <select onchange="catAsignarRubro(${o.i},this.value,document.getElementById('cat-alias-chk-${o.i}').checked)" style="max-width:200px"><option value="">— elegir existente —</option>${ropts}</select>
-      <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer" title="Guarda “${_escAttr(o.h.nombre)}” como alias del rubro elegido para las próximas importaciones">
-        <input type="checkbox" id="cat-alias-chk-${o.i}"> es alias
+      <select onchange="${asignar}(${idx},this.value,document.getElementById('cat-alias-chk-${tipo}${idx}').checked)" style="max-width:200px"><option value="">— elegir existente —</option>${ropts}</select>
+      <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer" title="Guarda “${_escAttr(texto)}” como alias del rubro elegido para las próximas importaciones">
+        <input type="checkbox" class="chk" id="cat-alias-chk-${tipo}${idx}"> es alias
       </label>
-      <input id="cat-nuevo-rubro-${o.i}" value="${_escAttr(o.h.nombre)}" placeholder="Nombre del rubro" style="max-width:180px">
-      <button class="btn sm" onclick="catCrearRubro(${o.i})"><i class="ti ti-plus"></i> Crear</button>
-    </div>`).join('');
+      <input id="cat-nuevo-rubro-${tipo}${idx}" value="${_escAttr(texto)}" placeholder="Nombre del rubro" style="max-width:180px">
+      <button class="btn sm" onclick="${crear}(${idx})"><i class="ti ti-plus"></i> Crear</button>
+    </div>`;
+}
+
+function catRenderRubros(){
+  const pend=_catHojas.map((h,i)=>({h,i})).filter(o=>!o.h.rubroId && _catHojaNecesitaRubro(o.h));
+  const wrap=document.getElementById('cat-rubros-wrap');
+  if(!pend.length && !_catPendCol.length){ wrap.style.display='none'; return; }
+  const ropts=rubrosDB.map(r=>`<option value="${r.id}">${_escAttr(r.nombre)}</option>`).join('');
+  const bloques=[];
+  if(pend.length) bloques.push(
+    '<div style="font-size:11px;color:var(--text2);margin:0 0 6px">Por <b style="color:var(--text)">nombre de hoja</b></div>'+
+    pend.map(o=>_catRubroPendHtml('h', o.i, o.h.nombre, 'table', '', ropts)).join(''));
+  if(_catPendCol.length) bloques.push(
+    `<div style="font-size:11px;color:var(--text2);margin:${pend.length?'14px':'0'} 0 6px">Valores de la columna <b style="color:var(--text)">${_escAttr(_catColRubro)}</b></div>`+
+    _catPendCol.map((p,i)=>_catRubroPendHtml('v', i, p.valor, 'columns', ` <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span>`, ropts)).join(''));
+  document.getElementById('cat-rubros-lista').innerHTML=bloques.join('');
   wrap.style.display='block';
+}
+
+// F1.0c-2 — resolver un VALOR de la columna contra un rubro que ya existe.
+// El alias sirve igual que para una hoja: alias_rubros guarda texto normalizado → rubro_id.
+async function catAsignarRubroValor(idx,rubroId,saveAlias){
+  const p=_catPendCol[idx]; if(!p||!rubroId) return;
+  const r=rubrosDB.find(x=>x.id===rubroId);
+  _catRubrosResueltos[p.norm]={rubroId, rubroNombre:r?r.nombre:p.valor};
+  if(saveAlias) await catGuardarAlias(p.valor, rubroId);
+  _catPendCol.splice(idx,1);
+  catRenderRubros();
+}
+
+// F1.0c-2 — crear el rubro que falta para un valor de la columna. Lo pide Jere, nunca
+// lo inventa el importador: esta función sólo corre desde el botón Crear.
+async function catCrearRubroValor(idx){
+  const p=_catPendCol[idx]; if(!p) return;
+  const inp=document.getElementById('cat-nuevo-rubro-v'+idx);
+  const nombre=((inp?inp.value:p.valor)||'').trim();
+  if(!nombre){toast('Poné un nombre para el rubro',true);return;}
+  const existe=rubrosDB.find(r=>_normTxt(r.nombre)===_normTxt(nombre));
+  if(existe){
+    _catRubrosResueltos[p.norm]={rubroId:existe.id, rubroNombre:existe.nombre};
+    _catPendCol.splice(idx,1); catRenderRubros();
+    toast('Vinculado al rubro existente: '+existe.nombre);
+    return;
+  }
+  const {data,error}=await _sb.from('rubros').insert([{nombre}]).select('id,nombre').single();
+  if(error){toast('Error creando rubro: '+error.message,true);return;}
+  await cargarRubrosSelect();   // refresca rubrosDB y selects globales
+  _catRubrosResueltos[p.norm]={rubroId:data.id, rubroNombre:data.nombre};
+  _catPendCol.splice(idx,1);
+  catRenderRubros();
+  toast('Rubro creado: '+data.nombre);
 }
 
 async function catAsignarRubro(idx,rubroId,saveAlias){
@@ -2394,7 +2499,7 @@ async function catGuardarAlias(nombreHoja, rubroId){
 
 async function catCrearRubro(idx){
   const h=_catHojas[idx]; if(!h) return;
-  const inp=document.getElementById('cat-nuevo-rubro-'+idx);
+  const inp=document.getElementById('cat-nuevo-rubro-h'+idx);   // 'h' = pendiente por hoja (F1.0c-2)
   const nombre=((inp?inp.value:h.nombre)||'').trim();
   if(!nombre){toast('Poné un nombre para el rubro',true);return;}
   // si ya existe un rubro con ese nombre (normalizado), no duplicar: vincular la hoja a ese
@@ -2444,8 +2549,14 @@ async function catPrevisualizar(){
     const r=rubrosDB.find(x=>x.id===rid);
     _catHojas[0].rubroId=rid; _catHojas[0].rubroNombre=r?r.nombre:'';
   }
-  const sinRubro=_catHojas.filter(h=>!h.rubroId);
+  const sinRubro=_catHojas.filter(h=>!h.rubroId && _catHojaNecesitaRubro(h));
   if(sinRubro.length){toast(`Faltan resolver ${sinRubro.length} rubro(s) sin coincidencia`,true);return;}
+  // nada se importa a medias: si un valor de la columna Rubro no resolvió, esas filas quedan afuera
+  if(_catFuenteRubro==='columna' && _catPendCol.length){
+    const filasPend=_catPendCol.reduce((n,x)=>n+x.filas,0);
+    toast(`Faltan resolver ${_catPendCol.length} valor(es) de la columna ${_catColRubro} (${filasPend} fila/s)`,true);
+    return;
+  }
 
   // estado de la base: TODOS los artículos (incl. soft-deleted, para revivir en vez de chocar
   // contra el UNIQUE de codigo_articulo) con los campos del snapshot "antes", + aplicaciones ACTIVAS
@@ -2463,7 +2574,7 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep}, arts, dbApl);
+  _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos}, arts, dbApl);
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
   catRenderPreview();
 }
@@ -3052,6 +3163,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   // importador de catálogo
   document.getElementById('cat-file').addEventListener('change',e=>catLeerArchivo(e.target.files[0]));
   document.getElementById('cat-btn-plantilla').addEventListener('click',catDescargarPlantilla);
+  document.getElementById('cat-col-rubro').addEventListener('change',e=>catCambiarFuenteRubro(e.target.value));
   document.getElementById('cat-btn-preview').addEventListener('click',catPrevisualizar);
   document.getElementById('cat-btn-aplicar').addEventListener('click',catAplicar);
 
