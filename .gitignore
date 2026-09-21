@@ -4,9 +4,6 @@ _dev/
 # Config local de Claude Code
 .claude/
 
-# Harness de pruebas en seco (dev-only, no es parte del sitio)
-harness-*.mjs
-
 # Dump del schema real de la base
 schema-actual.sql
 
