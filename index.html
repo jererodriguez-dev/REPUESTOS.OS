@@ -69,6 +69,9 @@ label.chk{display:flex;align-items:center;gap:7px;margin:0;font-size:12px;letter
 select option{background:var(--bg3)}
 label{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.8px;display:block;margin-bottom:4px}
 .fg{display:flex;flex-direction:column;gap:4px;margin-bottom:10px}
+/* F1.0c-3: input de valor fijo debajo del select de columna, en el mapeo del importador */
+.cat-fijo{font-size:11px;padding:4px 7px}
+.cat-fijo.on{border-color:var(--accent)}
 
 /* PAGES */
 .page{flex:1;overflow-y:auto;padding:18px 20px;display:none}
@@ -492,18 +495,18 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       </div>
 
       <div class="card" id="cat-mapeo" style="display:none">
-        <div class="card-title">Mapeo de columnas <span style="color:var(--text3);text-transform:none;letter-spacing:0">· se aplica a todas las hojas · * obligatorio</span></div>
+        <div class="card-title">Mapeo de columnas <span style="color:var(--text3);text-transform:none;letter-spacing:0">· se aplica a todas las hojas · * obligatorio · un <b>valor fijo</b> pisa la columna</span></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px">
           <div class="fg" style="margin-bottom:0"><label>Código *</label><select id="cat-col-codigo"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Código barra</label><select id="cat-col-codigo_barra"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Descripción *</label><select id="cat-col-descripcion"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Marca artículo</label><select id="cat-col-marca_art"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Marca aplicación</label><select id="cat-col-marca_apl"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Modelo</label><select id="cat-col-modelo"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Motor</label><select id="cat-col-motor"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Marca artículo</label><select id="cat-col-marca_art"></select><input class="cat-fijo" id="cat-fijo-marca_art" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Marca aplicación</label><select id="cat-col-marca_apl"></select><input class="cat-fijo" id="cat-fijo-marca_apl" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Modelo</label><select id="cat-col-modelo"></select><input class="cat-fijo" id="cat-fijo-modelo" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Motor</label><select id="cat-col-motor"></select><input class="cat-fijo" id="cat-fijo-motor" placeholder="o valor fijo…"></div>
           <div class="fg" style="margin-bottom:0"><label>Aplicaciones <span style="color:var(--text3);text-transform:none">(celda ///)</span></label><select id="cat-col-aplic"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Stock</label><select id="cat-col-stock"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Ubicación</label><select id="cat-col-ubicacion"></select></div>
+          <div class="fg" style="margin-bottom:0"><label>Stock</label><select id="cat-col-stock"></select><input class="cat-fijo" id="cat-fijo-stock" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Ubicación</label><select id="cat-col-ubicacion"></select><input class="cat-fijo" id="cat-fijo-ubicacion" placeholder="o valor fijo…"></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
           <label style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin:0">Rubro</label>
@@ -1975,6 +1978,7 @@ function initImportCat(){
   ['cat-csv-wrap','cat-rubros-wrap','cat-mapeo','cat-preview-wrap'].forEach(id=>document.getElementById(id).style.display='none');
   const f=document.getElementById('cat-file'); if(f) f.value='';
   const chk=document.getElementById('cat-sep-aplic'); if(chk) chk.checked=false;
+  _catResetFijos();
 }
 
 // =====================================================================
@@ -1986,13 +1990,13 @@ const CAT_CAMPOS=[
   {key:'codigo',      label:'Código',           cands:['codigo','cod','sku']},
   {key:'codigo_barra',label:'Código barra',     cands:['codigo barra','codigo de barra','cod barra','ean','barra']},
   {key:'descripcion', label:'Descripción',      cands:['descripcion','detalle','denominacion']},
-  {key:'marca_art',   label:'Marca artículo',   cands:['marca articulo','marca','fabricante']},
-  {key:'marca_apl',   label:'Marca aplicación', cands:['marca aplicacion','marca vehiculo','marca apl']},
-  {key:'modelo',      label:'Modelo',           cands:['modelo']},
-  {key:'motor',       label:'Motor',            cands:['motor','motorizacion']},
+  {key:'marca_art',   label:'Marca artículo',   cands:['marca articulo','marca','fabricante'], fijo:true},
+  {key:'marca_apl',   label:'Marca aplicación', cands:['marca aplicacion','marca vehiculo','marca apl'], fijo:true},
+  {key:'modelo',      label:'Modelo',           cands:['modelo'], fijo:true},
+  {key:'motor',       label:'Motor',            cands:['motor','motorizacion'], fijo:true},
   {key:'aplic',       label:'Aplicaciones',     cands:['aplicaciones','aplicacion','aplic','compatibilidad','vehiculos','vehiculo']},
-  {key:'stock',       label:'Stock',            cands:['cantidad','existencia','cant','stock']},
-  {key:'ubicacion',   label:'Ubicación',        cands:['ubicacion','ubic','estante','deposito','posicion','lugar']},
+  {key:'stock',       label:'Stock',            cands:['cantidad','existencia','cant','stock'], fijo:true},
+  {key:'ubicacion',   label:'Ubicación',        cands:['ubicacion','ubic','estante','deposito','posicion','lugar'], fijo:true},
   // F1.0c-2: va ÚLTIMO a propósito. _catAutodetect marca las columnas como usadas en el
   // orden de esta lista, así que ningún campo de arriba puede perder su columna por éste.
   {key:'rubro',       label:'Rubro',            cands:['rubro','rubros','categoria','familia','tipo de producto']}
@@ -2130,13 +2134,18 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
   const grupos=new Map();      // rubroId (o '__sin__') -> bloque del preview
   // F1.0c-2: el rubro puede salir de una COLUMNA, y entonces se resuelve fila por fila.
+  // F1.0c-3: valor fijo por campo. Si un campo tiene valor fijo, gana sobre la columna
+  // mapeada y vale para TODAS las filas del archivo. Sólo los campos con fijo:true en
+  // CAT_CAMPOS lo admiten: código, código de barra y descripción identifican al artículo,
+  // y el rubro tiene su propio selector de fuente (F1.0c-2).
+  const fijos={}; CAT_CAMPOS.forEach(c=>{ if(!c.fijo) return; const v=(opts.fijos||{})[c.key]; if(v!=null&&String(v).trim()!=='') fijos[c.key]=String(v).trim(); });
   const porColumna=opts.rubroFuente==='columna' && !!map.rubro;
   const dicc=opts.rubrosResueltos||{};
   const pendMap=new Map();     // valor normalizado -> {valor, filas}: lo que no resolvió
 
   (hojas||[]).forEach(h=>{
     (h.rows||[]).forEach(r=>{
-      const get=k=>map[k]?String(r[map[k]]==null?'':r[map[k]]).trim():'';
+      const get=k=>fijos[k]!==undefined?fijos[k]:(map[k]?String(r[map[k]]==null?'':r[map[k]]).trim():'');
       // cadena del rubro de ESTA fila: valor de la columna → diccionario ya resuelto;
       // celda vacía → rubro de la hoja (una planilla mixta sigue andando);
       // no resuelve → PENDIENTE, y la fila no se importa ni aparece en el preview.
@@ -2161,7 +2170,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       const marca_art=get('marca_art');
       const codigo_barra=get('codigo_barra');
       const ubicacion=get('ubicacion');
-      let stock=0; if(map.stock){ const n=parseInt(get('stock').replace(/[^0-9\-]/g,''),10); stock=isNaN(n)?0:n; }
+      let stock=0; if(map.stock||fijos.stock!==undefined){ const n=parseInt(get('stock').replace(/[^0-9\-]/g,''),10); stock=isNaN(n)?0:n; }
 
       let estado, existente=null, apps=[];
       const cl=codigo.toLowerCase();
@@ -2338,6 +2347,7 @@ async function catLeerArchivo(file){
       if(!sel) return;
       sel.innerHTML=opts; sel.value=auto[c.key]||'';
     });
+    _catResetFijos();   // archivo nuevo → los valores fijos de la pasada anterior no se arrastran
     // el selector de RUBRO no es una columna más: su opción vacía significa "usá el nombre de la hoja"
     _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
     const selRub=document.getElementById('cat-col-rubro');
@@ -2536,6 +2546,25 @@ async function _sbSelectAll(buildQuery, pageSize=1000){
 }
 // === SELECTALL-CORE END ===
 
+// F1.0c-3: lee los inputs de valor fijo de la pantalla. Devuelve sólo los que tienen algo.
+function _catLeerFijos(){
+  const f={};
+  CAT_CAMPOS.forEach(c=>{ if(!c.fijo) return; const el=document.getElementById('cat-fijo-'+c.key); const v=el?el.value.trim():''; if(v) f[c.key]=v; });
+  return f;
+}
+// un campo no puede tener columna Y valor fijo a la vez: si hay valor fijo, el select se apaga
+// (la regla queda a la vista, no sólo en el código).
+function catSyncFijo(key){
+  const inp=document.getElementById('cat-fijo-'+key), sel=document.getElementById('cat-col-'+key);
+  if(!inp||!sel) return;
+  const on=inp.value.trim()!=='';
+  sel.disabled=on; sel.style.opacity=on?'.45':'';
+  inp.classList.toggle('on',on);
+}
+function _catResetFijos(){
+  CAT_CAMPOS.forEach(c=>{ if(!c.fijo) return; const el=document.getElementById('cat-fijo-'+c.key); if(el){ el.value=''; } catSyncFijo(c.key); });
+}
+
 async function catPrevisualizar(){
   // si esta pasada frena por una validación, la previsualización anterior NO puede quedar en
   // pantalla: se leería como si fuera la actual. Se baja acá, antes de cualquier return.
@@ -2577,7 +2606,7 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos}, arts, dbApl);
+  _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos()}, arts, dbApl);
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
   catRenderPreview();
 }
@@ -3167,6 +3196,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.getElementById('cat-file').addEventListener('change',e=>catLeerArchivo(e.target.files[0]));
   document.getElementById('cat-btn-plantilla').addEventListener('click',catDescargarPlantilla);
   document.getElementById('cat-col-rubro').addEventListener('change',e=>catCambiarFuenteRubro(e.target.value));
+  CAT_CAMPOS.forEach(c=>{ if(!c.fijo) return; const el=document.getElementById('cat-fijo-'+c.key); if(el) el.addEventListener('input',()=>catSyncFijo(c.key)); });
   document.getElementById('cat-btn-preview').addEventListener('click',catPrevisualizar);
   document.getElementById('cat-btn-aplicar').addEventListener('click',catAplicar);
 

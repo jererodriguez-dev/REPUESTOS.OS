@@ -652,6 +652,93 @@ head('F1.0c-2 — DEFAULT: sin rubroFuente (o en "hoja") todo se comporta como a
   eq(ausente.rubrosPendientes.length, 0, 'y nunca hay pendientes por el camino viejo');
 }
 
+// ===========================================================================
+// F1.0c-3 — VALOR FIJO POR CAMPO
+// Caso real: Catalogo_TRW_*.xlsx no trae columna Marca; la marca es el archivo
+// entero. El valor fijo evita agregar esa columna a mano en el Excel.
+// ===========================================================================
+const fxF = {
+  headers: ['Código','Descripción','Marca artículo','Stock','Ubicación'],
+  rows: [
+    { 'Código':'TRW-1', 'Descripción':'Pastilla del.',  'Marca artículo':'GENERICA', 'Stock':2, 'Ubicación':'A1' },
+    { 'Código':'TRW-2', 'Descripción':'Pastilla tras.', 'Marca artículo':'',         'Stock':5, 'Ubicación':''   },
+  ],
+};
+const mkF = () => [{ nombre:'FRENOS', rows:fxF.rows, rubroId:'r-fre', rubroNombre:'FRENOS' }];
+
+head('F1.0c-3 — el valor fijo GANA sobre la columna mapeada');
+{
+  const map = _catAutodetect(fxF.headers);
+  eq(map.marca_art, 'Marca artículo', 'la columna Marca artículo está mapeada');
+  const plan = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{ marca_art:'TRW' } }, [], []);
+  const ins = plan.articulos.insert;
+  eq(ins.length, 2, '2 altas');
+  ok(ins.every(x => x.payload.marca_articulo === 'TRW'), 'las 2 altas toman TRW, incluso la fila que traía GENERICA en la columna');
+}
+
+head('F1.0c-3 — valor fijo SIN columna mapeada (el caso Catalogo_TRW)');
+{
+  const map = _catAutodetect(['Código','Descripción']);
+  eq(map.marca_art, '', 'no hay columna de marca en el archivo');
+  const hojas = [{ nombre:'FRENOS', rubroId:'r-fre', rubroNombre:'FRENOS', rows:[
+    { 'Código':'TRW-9', 'Descripción':'Disco' },
+  ]}];
+  const plan = _catPlanImport(hojas, map, { separarAplic:false, fijos:{ marca_art:'TRW' } }, [], []);
+  eq(plan.articulos.insert[0].payload.marca_articulo, 'TRW', 'la marca sale del valor fijo igual');
+}
+
+head('F1.0c-3 — stock fijo sin columna Stock (el camino que tenía su propio if)');
+{
+  const map = _catAutodetect(['Código','Descripción']);
+  const hojas = [{ nombre:'FRENOS', rubroId:'r-fre', rubroNombre:'FRENOS', rows:[
+    { 'Código':'TRW-7', 'Descripción':'Disco' },
+  ]}];
+  const conFijo = _catPlanImport(hojas, map, { separarAplic:false, fijos:{ stock:'3' } }, [], []);
+  eq(conFijo.articulos.insert[0].payload.stock, 3, 'stock fijo "3" entra como número 3');
+  const sinFijo = _catPlanImport(hojas, map, { separarAplic:false }, [], []);
+  eq(sinFijo.articulos.insert[0].payload.stock, 0, 'sin columna ni fijo, sigue siendo 0');
+}
+
+head('F1.0c-3 — ubicación fija y campos vacíos/ausentes no se pisan entre sí');
+{
+  const map = _catAutodetect(fxF.headers);
+  const plan = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{ ubicacion:'DEP-2' } }, [], []);
+  const ins = plan.articulos.insert;
+  ok(ins.every(x => x.payload.ubicacion === 'DEP-2'), 'las 2 altas van a DEP-2 (una traía A1, la otra vacío)');
+  eq(ins[0].payload.marca_articulo, 'GENERICA', 'marca_art SIN valor fijo sigue saliendo de su columna');
+  eq(ins[0].payload.stock, 2, 'stock SIN valor fijo sigue saliendo de su columna');
+}
+
+head('F1.0c-3 — un fijo vacío o en blanco es como no ponerlo');
+{
+  const map = _catAutodetect(fxF.headers);
+  const base   = _catPlanImport(mkF(), map, { separarAplic:false }, [], []);
+  const vacio  = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{ marca_art:'', ubicacion:'   ' } }, [], []);
+  ok(JSON.stringify(vacio) === JSON.stringify(base), 'fijos vacíos → plan IDÉNTICO al de no pasar fijos');
+}
+
+head('F1.0c-3 — sólo los campos con fijo:true admiten valor fijo');
+{
+  const map = _catAutodetect(fxF.headers);
+  const conBasura = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{ codigo:'PISADO', descripcion:'PISADA', codigo_barra:'777' } }, [], []);
+  const ins = conBasura.articulos.insert;
+  eq(ins.length, 2, 'siguen siendo 2 artículos distintos: el código fijo se ignoró');
+  eq(ins[0].payload.codigo_articulo, 'TRW-1', 'código sale de la columna, no del fijo');
+  eq(ins[0].payload.descripcion, 'Pastilla del.', 'descripción sale de la columna, no del fijo');
+  eq(ins[0].payload.codigo_barra, null, 'código de barra no admite fijo');
+  const campos = core.CAT_CAMPOS.filter(c => c.fijo).map(c => c.key).join(',');
+  eq(campos, 'marca_art,marca_apl,modelo,motor,stock,ubicacion', 'la lista de campos fijables es la acordada');
+}
+
+head('F1.0c-3 — DEFAULT: sin fijos, todo se comporta como antes');
+{
+  const map = _catAutodetect(fxF.headers);
+  const ausente = _catPlanImport(mkF(), map, { separarAplic:false }, [], []);
+  const vacioObj = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{} }, [], []);
+  ok(JSON.stringify(ausente) === JSON.stringify(vacioObj), 'fijos:{} da un plan IDÉNTICO al de no pasar nada');
+  eq(ausente.articulos.insert[0].payload.marca_articulo, 'GENERICA', 'y la marca sigue saliendo de la columna');
+}
+
 // --- resumen final -----------------------------------------------------------
 console.log(`\n${C.b}RESUMEN:${C.x} ${C.g}${pass} OK${C.x}` + (fail ? `, ${C.r}${fail} FALLARON${C.x}` : '') + '\n');
 process.exit(fail ? 1 : 0);
