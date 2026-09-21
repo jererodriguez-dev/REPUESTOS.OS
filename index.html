@@ -2537,6 +2537,9 @@ async function _sbSelectAll(buildQuery, pageSize=1000){
 // === SELECTALL-CORE END ===
 
 async function catPrevisualizar(){
+  // si esta pasada frena por una validación, la previsualización anterior NO puede quedar en
+  // pantalla: se leería como si fuera la actual. Se baja acá, antes de cualquier return.
+  _catPlan=null; document.getElementById('cat-preview-wrap').style.display='none';
   const map={}; CAT_CAMPOS.forEach(c=>{ const el=document.getElementById('cat-col-'+c.key); map[c.key]=el?el.value:''; });
   if(!map.codigo||!map.descripcion){toast('Mapeá al menos Código y Descripción',true);return;}
   if(map.codigo===map.descripcion){toast('Código y Descripción no pueden ser la misma columna',true);return;}
