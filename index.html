@@ -2117,6 +2117,76 @@ function _catVWindow(scrollTop, viewportH, rowH, colsH, total, over){
 //          valores de la columna la hace la UI ANTES y la pasa hecha: esta función es PURA.
 //   dbArticulos:    [{id, codigo_articulo}]               (activos)
 //   dbAplicaciones: [{id_articulo, marca, modelo, motor}] (de esos artículos)
+// =====================================================================
+// F1.3 — MOTOR DE PARES "Nombre + valor"
+// La planilla trae los datos hijos como pares numerados: `Nombre equivalencia 1` +
+// `Equivalencia 1`, `Nombre proveedor 1` + `Codigo proveedor 1`, etc. Es SIEMPRE la
+// misma operación: detectar los pares, descartar los vacíos y devolver una fila hija
+// por par. El motor no sabe a qué tabla va nada: eso lo decide cada enchufe (F1.3a-e).
+// Por ahora NADIE lo llama — se construye y se prueba primero, se enchufa después.
+// =====================================================================
+
+// una declaración por destino. `nombre`/`valor` son los labels SIN el número.
+// `que` describe qué significa el nombre, para que el warning se lea en criollo.
+const CAT_PARES=[
+  {destino:'equivalencias',     nombre:'nombre equivalencia',  valor:'equivalencia',     que:'marca'},
+  {destino:'codigos_proveedor', nombre:'nombre proveedor',     valor:'codigo proveedor', que:'proveedor'},
+  {destino:'medidas',           nombre:'nombre medida',        valor:'medida',           que:'medida'},
+  {destino:'datos_tecnicos',    nombre:'nombre dato tecnico',  valor:'dato tecnico',     que:'dato técnico'}
+];
+
+// separa un header en (etiqueta, número): "Nombre equivalencia 2" -> ['nombre equivalencia', 2].
+// Devuelve null si no termina en número.
+function _catPartirNumerado(header){
+  const m=_normTxt(header).match(/^(.*?)\s+(\d+)$/);
+  return m?[m[1],parseInt(m[2],10)]:null;
+}
+
+// recorre los headers del archivo y arma, por destino, la lista de pares encontrados.
+// Ordena por número. Un par entra sólo si están las DOS columnas: una columna
+// `Equivalencia 2` sin su `Nombre equivalencia 2` no es un par (queda en `sueltas`).
+function _catDetectarPares(headers, defs){
+  defs=defs||CAT_PARES;
+  const res={}, sueltas=[];
+  const idx=new Map();   // "etiqueta|n" -> header original
+  (headers||[]).forEach(h=>{ const p=_catPartirNumerado(h); if(p) idx.set(p[0]+'|'+p[1],h); });
+  defs.forEach(d=>{
+    const pares=[]; const nums=new Set();
+    idx.forEach((h,k)=>{ const [et,n]=k.split('|'); if(et===d.nombre||et===d.valor) nums.add(parseInt(n,10)); });
+    [...nums].sort((a,b)=>a-b).forEach(n=>{
+      const hN=idx.get(d.nombre+'|'+n), hV=idx.get(d.valor+'|'+n);
+      if(hN&&hV) pares.push({n, hNombre:hN, hValor:hV});
+      else sueltas.push({destino:d.destino, n, header:hN||hV, falta:hN?d.valor:d.nombre});
+    });
+    res[d.destino]=pares;
+  });
+  return {pares:res, sueltas};
+}
+
+// aplica los pares detectados a UNA fila. Devuelve una entrada por par con contenido.
+// Las reglas, todas verificables en el harness:
+//  - par entero vacío            -> se saltea en silencio (es lo normal: la planilla trae 3 y usás 1)
+//  - nombre sin valor            -> se descarta CON warning (la fila sigue viva)
+//  - valor sin nombre            -> se descarta CON warning (la fila sigue viva)
+//  - el número NO se usa como orden de nada: es sólo la columna de donde salió
+function _catParesDeFila(fila, detectados, destino, ctx){
+  const pares=(detectados&&detectados.pares&&detectados.pares[destino])||[];
+  const def=CAT_PARES.find(d=>d.destino===destino);
+  const que=def?def.que:'nombre';
+  const out=[], warnings=[];
+  // ojo con la precedencia: `a && b==null` se lee `a && (b==null)`, así que con fila=null
+  // el ternario caía al else y explotaba. Lo cazó el test de "la fila no se rompe nunca".
+  const cel=h=>{ const v=fila?fila[h]:null; return String(v==null?'':v).trim(); };
+  pares.forEach(p=>{
+    const nombre=cel(p.hNombre), valor=cel(p.hValor);
+    if(!nombre&&!valor) return;                       // par sin usar: normal, ni warning
+    if(!nombre){ warnings.push({destino, n:p.n, motivo:`${p.hValor} tiene "${valor}" pero ${p.hNombre} está vacío: sin ${que} no se puede guardar`, ctx:ctx||null}); return; }
+    if(!valor){  warnings.push({destino, n:p.n, motivo:`${p.hNombre} dice "${nombre}" pero ${p.hValor} está vacío`, ctx:ctx||null}); return; }
+    out.push({n:p.n, nombre, valor});
+  });
+  return {filas:out, warnings};
+}
+
 function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   opts=opts||{}; map=map||{};
   const sep=!!opts.separarAplic;

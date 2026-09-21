@@ -18,11 +18,11 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
-const { _catAutodetect, _catParseAplic, _catResolverRubro, _catHojaIgnorada, _catVWindow, _catPlanImport,
+const { _catPartirNumerado, _catDetectarPares, _catParesDeFila, _catAutodetect, _catParseAplic, _catResolverRubro, _catHojaIgnorada, _catVWindow, _catPlanImport,
         _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro } = core;
 
 // --- mini framework de asserts ----------------------------------------------
@@ -737,6 +737,119 @@ head('F1.0c-3 — DEFAULT: sin fijos, todo se comporta como antes');
   const vacioObj = _catPlanImport(mkF(), map, { separarAplic:false, fijos:{} }, [], []);
   ok(JSON.stringify(ausente) === JSON.stringify(vacioObj), 'fijos:{} da un plan IDÉNTICO al de no pasar nada');
   eq(ausente.articulos.insert[0].payload.marca_articulo, 'GENERICA', 'y la marca sigue saliendo de la columna');
+}
+
+// ===========================================================================
+// F1.3 — MOTOR DE PARES "Nombre + valor" (el motor solo, sin enchufar)
+// Headers tomados de la PLANILLA-MAESTRA real (hoja MAESTRA, 35 columnas).
+// ===========================================================================
+const HDR_MAESTRA = ['Codigo','Rubro','Base ID','Descripcion','Marca articulo','Marca aplicacion','Stock','Ubicacion',
+  'OEM 1','OEM 2','OEM 3',
+  'Nombre equivalencia 1','Equivalencia 1','Nombre equivalencia 2','Equivalencia 2','Nombre equivalencia 3','Equivalencia 3',
+  'Nombre proveedor 1','Codigo proveedor 1','Nombre proveedor 2','Codigo proveedor 2','Nombre proveedor 3','Codigo proveedor 3',
+  'Nombre medida 1','Medida 1','Nombre medida 2','Medida 2','Nombre medida 3','Medida 3',
+  'Nombre dato tecnico 1','Dato tecnico 1','Nombre dato tecnico 2','Dato tecnico 2','Nombre dato tecnico 3','Dato tecnico 3'];
+
+head('F1.3 — partir un header numerado');
+{
+  eq(JSON.stringify(_catPartirNumerado('Nombre equivalencia 2')), '["nombre equivalencia",2]', '"Nombre equivalencia 2" → etiqueta + número');
+  eq(JSON.stringify(_catPartirNumerado('Nombre dato técnico 1')), '["nombre dato tecnico",1]', 'los acentos se normalizan ("técnico" → "tecnico")');
+  eq(JSON.stringify(_catPartirNumerado('EQUIVALENCIA   3')), '["equivalencia",3]', 'mayúsculas y espacios de más no molestan');
+  eq(_catPartirNumerado('Descripcion'), null, 'un header sin número no es numerado');
+  eq(_catPartirNumerado('OEM 1')[1], 1, 'OEM 1 sí parte (aunque los OEM no sean pares: eso lo decide el enchufe)');
+}
+
+head('F1.3 — detección sobre la PLANILLA-MAESTRA real');
+{
+  const d = _catDetectarPares(HDR_MAESTRA);
+  eq(d.pares.equivalencias.length, 3, '3 pares de equivalencia');
+  eq(d.pares.codigos_proveedor.length, 3, '3 pares de proveedor');
+  eq(d.pares.medidas.length, 3, '3 pares de medida');
+  eq(d.pares.datos_tecnicos.length, 3, '3 pares de dato técnico');
+  eq(d.sueltas.length, 0, 'ninguna columna huérfana');
+  const p1 = d.pares.codigos_proveedor[0];
+  eq(p1.hNombre, 'Nombre proveedor 1', 'el par conserva el header ORIGINAL del nombre (no el normalizado)');
+  eq(p1.hValor, 'Codigo proveedor 1', 'y el del valor');
+  eq(d.pares.medidas.map(p => p.n).join(','), '1,2,3', 'los pares vienen ordenados por número');
+  ok(!d.pares.medidas.some(p => p.hNombre === 'Nombre dato tecnico 1'), '"Nombre medida" NO se come a "Nombre dato tecnico"');
+}
+
+head('F1.3 — numeración salteada y desordenada');
+{
+  const d = _catDetectarPares(['Nombre medida 3','Medida 3','Nombre medida 1','Medida 1']);
+  eq(d.pares.medidas.map(p => p.n).join(','), '1,3', 'faltando el 2, quedan el 1 y el 3 (ordenados), sin inventar el 2');
+}
+
+head('F1.3 — una columna sin su par no es un par');
+{
+  const d = _catDetectarPares(['Nombre medida 1','Medida 1','Medida 2','Nombre medida 3']);
+  eq(d.pares.medidas.length, 1, 'sólo el par 1 está completo');
+  eq(d.sueltas.length, 2, 'las otras dos quedan reportadas como sueltas');
+  ok(d.sueltas.some(x => x.header === 'Medida 2' && x.falta === 'nombre medida'), 'a "Medida 2" le falta su columna de nombre');
+  ok(d.sueltas.some(x => x.header === 'Nombre medida 3' && x.falta === 'medida'), 'a "Nombre medida 3" le falta su columna de valor');
+}
+
+head('F1.3 — CRITERIO DEL PLAN: 3 pares, uno vacío en el medio → 2 filas');
+{
+  const d = _catDetectarPares(HDR_MAESTRA);
+  const fila = {
+    'Nombre medida 1':'Diámetro interior', 'Medida 1':'25mm',
+    'Nombre medida 2':'',                  'Medida 2':'',
+    'Nombre medida 3':'Ancho',             'Medida 3':'12mm',
+  };
+  const r = _catParesDeFila(fila, d, 'medidas');
+  eq(r.filas.length, 2, '2 filas hijas');
+  eq(r.warnings.length, 0, 'el par vacío del medio NO genera warning (es lo normal)');
+  eq(r.filas.map(f => f.nombre).join(' · '), 'Diámetro interior · Ancho', 'y son la 1 y la 3, en orden');
+  eq(r.filas[1].n, 3, 'cada fila recuerda de qué número de columna salió');
+}
+
+head('F1.3 — CRITERIO DEL PLAN: nombre sin valor y valor sin nombre se descartan con warning');
+{
+  const d = _catDetectarPares(HDR_MAESTRA);
+  const fila = {
+    'Nombre proveedor 1':'DASSEN', 'Codigo proveedor 1':'',          // nombre sin valor
+    'Nombre proveedor 2':'',       'Codigo proveedor 2':'X-99',      // valor sin nombre
+    'Nombre proveedor 3':'IG',     'Codigo proveedor 3':'IG-500',    // el bueno
+  };
+  const r = _catParesDeFila(fila, d, 'codigos_proveedor', { codigo:'T-1' });
+  eq(r.filas.length, 1, 'sobrevive sólo el par completo');
+  eq(r.filas[0].valor, 'IG-500', 'y es el de IG');
+  eq(r.warnings.length, 2, '2 warnings, uno por cada par roto');
+  ok(r.warnings.every(w => w.destino === 'codigos_proveedor'), 'los warnings dicen a qué destino pertenecen');
+  ok(r.warnings.every(w => w.ctx && w.ctx.codigo === 'T-1'), 'y arrastran el contexto de la fila para poder mostrarla');
+  ok(r.warnings.some(w => /proveedor/.test(w.motivo)), 'el warning de "valor sin nombre" nombra qué falta, en criollo');
+}
+
+head('F1.3 — la fila no se rompe nunca');
+{
+  const d = _catDetectarPares(HDR_MAESTRA);
+  eq(_catParesDeFila({}, d, 'medidas').filas.length, 0, 'fila entera vacía → 0 filas, 0 warnings, sin explotar');
+  eq(_catParesDeFila(null, d, 'medidas').filas.length, 0, 'fila null tampoco explota');
+  eq(_catParesDeFila({'Medida 1':'25mm'}, null, 'medidas').filas.length, 0, 'sin detección previa devuelve vacío, no undefined');
+  eq(_catParesDeFila({}, d, 'inventado').filas.length, 0, 'un destino que no existe devuelve vacío');
+  const espacios = _catParesDeFila({'Nombre medida 1':'   ','Medida 1':'  '}, d, 'medidas');
+  eq(espacios.filas.length + espacios.warnings.length, 0, 'celdas con sólo espacios cuentan como vacías, no como par roto');
+  const num = _catParesDeFila({'Nombre medida 1':'Ancho','Medida 1':12}, d, 'medidas');
+  eq(num.filas[0].valor, '12', 'un número de Excel entra como texto, no como 12 crudo');
+}
+
+head('F1.3 — un archivo sin pares no molesta a nadie');
+{
+  const d = _catDetectarPares(['Código','Descripción','Stock']);
+  eq(d.sueltas.length, 0, 'sin columnas numeradas no hay sueltas');
+  eq(core.CAT_PARES.every(x => d.pares[x.destino].length === 0), true, 'y todos los destinos quedan vacíos');
+}
+
+head('F1.3 — el motor todavía NO está enchufado (el plan lo pide así)');
+{
+  const map = _catAutodetect(HDR_MAESTRA);
+  const hojas = [{ nombre:'MAESTRA', rubroId:'r1', rubroNombre:'MAESTRA', rows:[
+    { 'Codigo':'P-1', 'Descripcion':'Uno', 'Nombre medida 1':'Ancho', 'Medida 1':'12mm' },
+  ]}];
+  const plan = _catPlanImport(hojas, map, { separarAplic:false }, [], []);
+  eq(plan.articulos.insert.length, 1, 'el importador sigue dando de alta el artículo igual que antes');
+  eq(plan.warnings.length, 0, 'y las columnas de pares no le generan ruido');
 }
 
 // --- resumen final -----------------------------------------------------------
