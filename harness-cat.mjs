@@ -1269,6 +1269,28 @@ head('F1.3d — medidas');
   eq(r.hijos.medidas.skip, 1, 'Interior igual → salteada');
 }
 
+// ===========================================================================
+// F1.3e — ENCHUFE datos_tecnicos + la fila real de la PLANILLA-MAESTRA completa
+// ===========================================================================
+head('F1.3e — datos técnicos y la fila de ejemplo de la PLANILLA-MAESTRA');
+{
+  const fila = { 'Codigo':'6203-2RS','Rubro':'RULEMANES','Base ID':'','Descripcion':'RULEMAN RUEDA DELANTERA','Marca articulo':'SKF','Marca aplicacion':'Fiat','Stock':0,'Ubicacion':'E3-A',
+    'OEM 1':'4434587','OEM 2':'','OEM 3':'',
+    'Nombre equivalencia 1':'NSK','Equivalencia 1':'6203DDU','Nombre equivalencia 2':'FAG','Equivalencia 2':'6203-2RSR','Nombre equivalencia 3':'','Equivalencia 3':'',
+    'Nombre proveedor 1':'DASSEN','Codigo proveedor 1':'DA6203','Nombre proveedor 2':'Expoyer','Codigo proveedor 2':'EXP-6203','Nombre proveedor 3':'','Codigo proveedor 3':'',
+    'Nombre medida 1':'Interior','Medida 1':17,'Nombre medida 2':'Exterior','Medida 2':40,'Nombre medida 3':'Alto','Medida 3':12,
+    'Nombre dato tecnico 1':'Tipo','Dato tecnico 1':'Bolas','Nombre dato tecnico 2':'Sellado','Dato tecnico 2':'2RS','Nombre dato tecnico 3':'ABS','Dato tecnico 3':'No' };
+  const hojas = [{ nombre:'MAESTRA', rubroId:'r', rubroNombre:'RULEMANES', headers:HDR_MAESTRA, rows:[fila] }];
+  const p = _catPlanImport(hojas, _catAutodetect(HDR_MAESTRA), { proveedoresDB:PROVS3 }, [], []);
+  eq(p.resumen.nuevos, 1, '1 alta');
+  eq(p.hijos.datos_tecnicos.insert.map(x => x.row.nombre_dato + '=' + x.row.valor).join(' '), 'Tipo=Bolas Sellado=2RS ABS=No', '3 datos técnicos');
+  eq(p.hijos.medidas.insert.length, 3, '3 medidas');
+  eq(p.hijos.oems.insert.length, 1, '1 OEM');
+  eq(p.hijos.codigos_proveedor.insert.length, 2, '2 códigos de proveedor');
+  eq(p.resumen.hijosIns, 9, 'resumen: 9 datos extra');
+  eq(p.paresWarnings.length, 0, 'sin avisos');
+}
+
 // --- resumen final -----------------------------------------------------------
 console.log(`\n${C.b}RESUMEN:${C.x} ${C.g}${pass} OK${C.x}` + (fail ? `, ${C.r}${fail} FALLARON${C.x}` : '') + '\n');
 process.exit(fail ? 1 : 0);

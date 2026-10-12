@@ -2397,8 +2397,9 @@ const CAT_ENCHUFES={
   codigos_proveedor:{ k:it=>it.proveedor_id+'\u0000'+_catNormCodigo(it.codigo_proveedor), upd:null },
   oems:             { k:it=>_catNormCodigo(it.oem), upd:null },
   medidas:          { k:it=>_normTxt(it.nombre_medida), upd:'valor' },
+  datos_tecnicos:   { k:it=>_normTxt(it.nombre_dato), upd:'valor' },
 };
-const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas'];
+const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas','datos_tecnicos'];
 
 // F1.3c — columnas OEM: no son pares, son códigos sueltos ("OEM 1", "OEM 2", "OEM"). Ordenadas por número.
 function _catColsOem(headers){
@@ -2428,6 +2429,12 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
     const r=_catParesDeFila(fila, det, 'medidas', ctx);
     warnings.push(...r.warnings);
     items.medidas=r.filas.map(p=>({nombre_medida:p.nombre, valor:p.valor}));
+  }
+  if(on('datos_tecnicos')){
+    // F1.3e: igual que medidas (nombre = el dato, valor = texto)
+    const r=_catParesDeFila(fila, det, 'datos_tecnicos', ctx);
+    warnings.push(...r.warnings);
+    items.datos_tecnicos=r.filas.map(p=>({nombre_dato:p.nombre, valor:p.valor}));
   }
   if(on('oems')){
     // marca_oem queda vacía: la planilla no dice de qué marca es el OEM (no se adivina)
