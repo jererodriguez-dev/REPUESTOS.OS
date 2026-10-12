@@ -526,6 +526,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
           <button class="btn sm success" id="cat-btn-aplicar"><i class="ti ti-check"></i> Aplicar importación</button>
         </div>
         <div id="cat-preview-errores" style="display:none;border-bottom:1px solid var(--border)"></div>
+        <div id="cat-preview-preguntas" style="display:none;border-bottom:1px solid var(--border)"></div>
         <div id="cat-preview-body" style="padding:8px 12px"></div>
       </div>
     </div>
@@ -1970,9 +1971,13 @@ let _catFuenteRubro='hoja';
 let _catColRubro='';        // nombre de la columna elegida, cuando la fuente es 'columna'
 let _catRubrosResueltos={}; // {valorNormalizado: {rubroId, rubroNombre}} — lo que ya resolvió
 let _catPendCol=[];         // [{valor, norm, filas}] — valores de la columna que NO resolvieron
+// refuerzos de F1.1: lo que Jere contesta en el preview ("¿es la misma pieza?") y la base leída
+// en la última previsualización, para recalcular el plan al contestar sin volver a consultar.
+let _catDecisiones={codigo:{}, prov:{}};
+let _catBase=null;          // {map, opts, arts, dbApl}
 
 function initImportCat(){
-  _catHojas=[]; _catEsCSV=false; _catPlan=null;
+  _catHojas=[]; _catEsCSV=false; _catPlan=null; _catBase=null; _catDecisiones={codigo:{}, prov:{}};
   _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
   document.getElementById('cat-filename').textContent='';
   ['cat-csv-wrap','cat-rubros-wrap','cat-mapeo','cat-preview-wrap'].forEach(id=>document.getElementById(id).style.display='none');
@@ -2043,8 +2048,15 @@ function _catAplKey(id,marca,modelo,motor){ return id+'|'+_normTxt(marca)+'|'+_n
 // (lower(codigo), lower(coalesce(marca,''))). Dos filas son el MISMO artículo si coinciden
 // código Y marca. El \u0000 como separador no puede aparecer en un dato real (un '|' sí podría).
 // Es la ÚNICA función que arma esta clave: la usan el plan, catAplicar y el harness.
+// Refuerzo a (11/10): el CÓDIGO se compara normalizado: sin mayúsculas, espacios, guiones,
+// puntos ni barras ("VPK 1006" = "VPK1006" = "VPK-1006"). Se GUARDA tal cual vino (dato crudo):
+// sólo cambia la comparación. La base sigue con lower(codigo); como esta clave es más gruesa que
+// la de la base, nunca pasa que el front crea "son dos" y la base rechace el segundo.
+function _catNormCodigo(codigo){
+  return String(codigo==null?'':codigo).toLowerCase().replace(/[\s\-.\/\\]/g,'');
+}
 function _catClaveArt(codigo, marca){
-  return String(codigo==null?'':codigo).trim().toLowerCase()
+  return _catNormCodigo(codigo)
        + '\u0000'
        + String(marca==null?'':marca).trim().toLowerCase();
 }
@@ -2214,7 +2226,13 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const plan={ articulos:{insert:[],update:[],error:[]}, aplicaciones:{insert:[],skip:[]}, noParseados:[], warnings:[], preview:[], rubrosPendientes:[] };
   if(sep && !map.aplic) plan.warnings.push('Activaste “separar por ///” pero no mapeaste la columna Aplicaciones.');
 
-  const vistosCod=new Map();   // cl -> {existente}: (código+marca) ya visto en el archivo (mismo artículo, +aplicaciones)
+  const vistosCod=new Map();   // cl -> {existente, codigo}: (código+marca) ya visto en el archivo (mismo artículo, +aplicaciones)
+  // refuerzo a: dos filas del MISMO archivo cuyo código sólo difiere en guiones/espacios/puntos/barras
+  // ("VPK 1006" y "VPK-1006") con la misma marca NO se fusionan en silencio: se pregunta.
+  // opts.decisiones.codigo[clave] = 'misma' (se fusionan) | 'otra' (la fila no entra; va a "para corregir").
+  const decCod=(opts.decisiones&&opts.decisiones.codigo)||{};
+  const dudasCod=new Map();    // clave -> {clave, marca, codigos:[], filas}
+  plan.dudasCodigo=[]; plan.paraCorregir=[];
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código+marca)
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
@@ -2260,15 +2278,28 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 
       let estado, existente=null, apps=[];
       const cl=_catClaveArt(codigo, marca_art);   // F1.1: mismo código con otra marca = OTRO artículo
+      let retenida=false;                          // la fila espera una respuesta (o quedó para corregir): no entra
       if(!codigo){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta código'}); }
       else if(!vistosCod.has(cl) && !descripcion){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta descripción'}); }
       else{
-        if(vistosCod.has(cl)){
+        const visto=vistosCod.get(cl);
+        const escritoDistinto=visto && codigo.trim().toLowerCase()!==visto.codigo.trim().toLowerCase();
+        if(escritoDistinto && decCod[cl]!=='misma'){
+          retenida=true;
+          if(decCod[cl]==='otra'){ estado='otra'; plan.paraCorregir.push({hoja:h.nombre, codigo, marca:marca_art, desc:descBase, motivo:`código parecido a ${visto.codigo}`}); }
+          else{
+            estado='duda';
+            let d=dudasCod.get(cl);
+            if(!d){ d={clave:cl, marca:marca_art, codigos:[visto.codigo], filas:0}; dudasCod.set(cl,d); }
+            if(!d.codigos.includes(codigo)) d.codigos.push(codigo);
+            d.filas++;
+          }
+        }else if(visto){
           // mismo código Y misma marca repetidos → mismo artículo, sólo suma aplicaciones (plantilla: "mismo código = otra aplicación")
-          estado='masapl'; existente=vistosCod.get(cl).existente;
+          estado='masapl'; existente=visto.existente;
         }else{
           existente=mapaArt[cl]||null;
-          vistosCod.set(cl,{existente});
+          vistosCod.set(cl,{existente, codigo});
           if(existente){
             const esRevive=!!existente.deleted_at;   // fila soft-deleted: el código UNIQUE ya está ocupado → revivir, no INSERT
             estado=esRevive?'reviv':'upd';
@@ -2287,7 +2318,8 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           }
         }
         // aplicaciones: del choricito (sep ON) o de las columnas estructuradas (sep OFF)
-        if(sep){
+        if(retenida){ /* fila retenida: ni artículo ni aplicaciones */ }
+        else if(sep){
           if(map.aplic){
             const pr=_catParseAplic(aplicTxt);
             apps=pr.apps;
@@ -2313,6 +2345,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       if(!g){ g={rubroId:filaRubroId, rubro:filaRubroNombre, hojas:[], nuevos:0, upd:0, reviv:0, err:0, filas:[], totalValidas:0}; grupos.set(gk,g); }
       if(!g.hojas.includes(h.nombre)) g.hojas.push(h.nombre);
       if(estado==='err') g.err++;
+      else if(retenida){ /* se muestra en el bloque de preguntas, no en el cuerpo */ }
       else{
         if(estado==='nuevo') g.nuevos++;
         else if(estado==='upd'||estado==='reviv'){ g.upd++; if(estado==='reviv') g.reviv++; }
@@ -2326,7 +2359,8 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // valores de la columna Rubro que no resolvieron, con cuántas filas dependen de cada uno.
   // NO son un error de la fila: es un dato que falta resolver, y se pregunta en otra pantalla.
   pendMap.forEach(p=>plan.rubrosPendientes.push({valor:p.valor, filas:p.filas}));
-  plan.resumen={ nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  dudasCod.forEach(d=>plan.dudasCodigo.push(d));
+  plan.resumen={ dudas:plan.dudasCodigo.length, paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -2435,6 +2469,7 @@ async function catLeerArchivo(file){
       sel.innerHTML=opts; sel.value=auto[c.key]||'';
     });
     _catResetFijos();   // archivo nuevo → los valores fijos de la pasada anterior no se arrastran
+    _catBase=null; _catDecisiones={codigo:{}, prov:{}};   // ni las respuestas del archivo anterior
     // el selector de RUBRO no es una columna más: su opción vacía significa "usá el nombre de la hoja"
     _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
     const selRub=document.getElementById('cat-col-rubro');
@@ -2685,17 +2720,52 @@ async function catPrevisualizar(){
   const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,rubro_id,deleted_at'));
   if(error){toast('Error cargando artículos',true);return;}
   const codesFile=new Set();
-  _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=String(r[map.codigo]==null?'':r[map.codigo]).trim().toLowerCase(); if(c) codesFile.add(c); }));
-  const idsExist=arts.filter(a=>codesFile.has(String(a.codigo_articulo).trim().toLowerCase())).map(a=>a.id);
+  _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=_catNormCodigo(r[map.codigo]); if(c) codesFile.add(c); }));
+  const idsExist=arts.filter(a=>codesFile.has(_catNormCodigo(a.codigo_articulo))).map(a=>a.id);
   let dbApl=[];
   for(let i=0;i<idsExist.length;i+=200){
     const slice=idsExist.slice(i,i+200);
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catPlan=_catPlanImport(_catHojas, map, {separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos()}, arts, dbApl);
+  _catBase={map, arts, dbApl, opts:{separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos()}};
+  _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
+}
+
+// recalcula el plan con la base de la última previsualización + las respuestas de Jere
+function _catReplanificar(){
+  const b=_catBase; if(!b) return;
+  _catPlan=_catPlanImport(_catHojas, b.map, Object.assign({}, b.opts, {decisiones:_catDecisiones}), b.arts, b.dbApl);
   catRenderPreview();
+}
+// refuerzo a: respuesta a "¿es la misma pieza?" para códigos escritos distinto con la misma marca
+function catDecidirCodigo(i, val){
+  const d=_catPlan&&_catPlan.dudasCodigo[i]; if(!d) return;
+  _catDecisiones.codigo[d.clave]=val;
+  _catReplanificar();
+}
+
+// bloque de preguntas del preview: lo que no entra hasta que Jere conteste, y lo que quedó para corregir
+function _catPreguntasHtml(plan){
+  const sec=[];
+  const btn=(fn,i,val,txt,cls)=>`<button class="btn sm ${cls||''}" onclick="${fn}(${i},'${val}')">${txt}</button>`;
+  if(plan.dudasCodigo&&plan.dudasCodigo.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px"><i class="ti ti-help-circle"></i> Códigos escritos distinto con la misma marca — ¿son la misma pieza? (${plan.dudasCodigo.length})</div>`+
+      plan.dudasCodigo.map((d,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span><b>${d.codigos.map(_escAttr).join('</b> · <b>')}</b> <span style="color:var(--text3)">(${_escAttr(d.marca)||'sin marca'}) · ${d.filas} fila${d.filas===1?'':'s'} esperando</span></span>
+        ${btn('catDecidirCodigo',i,'misma','Es la misma')} ${btn('catDecidirCodigo',i,'otra','Es otra (no entra)')}</div>`).join(''));
+  }
+  if(plan.paraCorregir&&plan.paraCorregir.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-pencil"></i> Para corregir a mano en la planilla (no entran): ${plan.paraCorregir.length}</div>
+      <div style="max-height:150px;overflow-y:auto"><table class="app-table"><thead><tr><th>Código</th><th>Marca</th><th>Motivo</th><th>Hoja</th></tr></thead><tbody>${
+      plan.paraCorregir.map(p=>`<tr><td style="white-space:nowrap">${_escAttr(p.codigo)}</td><td>${_escAttr(p.marca)||'—'}</td><td>${_escAttr(p.motivo)}</td><td style="color:var(--text3)">${_escAttr(p.hoja)}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+  return sec.length?`<div style="padding:10px 14px;background:rgba(240,160,40,.07)">${sec.join('')}</div>`:'';
+}
+// ¿quedan preguntas sin contestar? (mientras haya, no se aplica nada)
+function _catDudasPendientes(plan){
+  return plan?((plan.dudasCodigo||[]).length+(plan.dudasProv||[]).length):0;
 }
 
 // --- virtualización del cuerpo del preview (windowing propio, sin librerías) ---
@@ -2759,6 +2829,8 @@ function catRenderPreview(){
       </div></div>`;
     errEl.style.display='block';
   }else{ errEl.innerHTML=''; errEl.style.display='none'; }
+  const pregEl=document.getElementById('cat-preview-preguntas');
+  if(pregEl){ const ph=_catPreguntasHtml(plan); pregEl.innerHTML=ph; pregEl.style.display=ph?'block':'none'; }
 
   // cuerpo VIRTUALIZADO: lista plana (encabezado de hoja + sus filas), se dibujan sólo las visibles
   const items=[];
@@ -2784,13 +2856,16 @@ function catRenderPreview(){
 
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
-  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns)===0;
+  const nDudas=_catDudasPendientes(plan);
+  if(nDudas) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--accent)">${nDudas} pregunta${nDudas===1?'':'s'} sin contestar</span>`;
+  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns)===0 || nDudas>0;
   document.getElementById('cat-preview-wrap').style.display='block';
   _catVirtPaint();   // pintura inicial (ya con display:block → hay clientHeight)
 }
 
 async function catAplicar(){
   const plan=_catPlan; if(!plan){toast('Previsualizá primero',true);return;}
+  if(_catDudasPendientes(plan)){toast('Contestá las preguntas del preview antes de aplicar',true);return;}
   const ins=plan.articulos.insert, upds=plan.articulos.update, apps=plan.aplicaciones.insert;
   if(!ins.length && !upds.length && !apps.length){toast('No hay nada para aplicar',true);return;}
   const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;

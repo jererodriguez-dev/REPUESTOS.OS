@@ -18,12 +18,12 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
 const { _catPartirNumerado, _catDetectarPares, _catParesDeFila, _catAutodetect, _catParseAplic, _catResolverRubro, _catHojaIgnorada, _catVWindow, _catPlanImport,
-        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro, _catClaveArt } = core;
+        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro, _catClaveArt, _catNormCodigo } = core;
 
 // --- mini framework de asserts ----------------------------------------------
 let pass = 0, fail = 0;
@@ -942,6 +942,59 @@ head('F1.1 — caso 7: mayúsculas (la clave normaliza igual que el índice de l
   eq(plan.resumen.nuevos, 1, 'RLM-6204/TRW y rlm-6204/trw → nuevos: 1');
   eq(_catClaveArt(' RLM-6204 ', 'TRW '), _catClaveArt('rlm-6204', 'trw'), '_catClaveArt: trim + minúsculas');
   ok(_catClaveArt('A', 'B|C') !== _catClaveArt('A|B', 'C'), '_catClaveArt: un "|" en el dato no hace chocar dos claves');
+}
+
+// ===========================================================================
+// F1.1 refuerzo a — el código se compara normalizado (sin espacios/guiones/puntos/barras)
+// ===========================================================================
+head('F1.1-a — _catNormCodigo');
+{
+  eq(_catNormCodigo('VPK 1006'), 'vpk1006', '"VPK 1006" → vpk1006');
+  eq(_catNormCodigo('VPK-1006'), 'vpk1006', '"VPK-1006" → vpk1006');
+  eq(_catNormCodigo(' vpk.10/06\\ '), 'vpk1006', 'puntos, barras y espacios afuera');
+  eq(_catNormCodigo('VPK_1006'), 'vpk_1006', 'el guion bajo NO se saca (no está en la regla)');
+  eq(_catNormCodigo(null), '', 'null → vacío');
+}
+
+head('F1.1-a — contra la base: "VPK-1006" en el archivo encuentra "VPK 1006" de la base');
+{
+  const arts = [{ id:9, codigo_articulo:'VPK 1006', marca_articulo:'VTH', descripcion:'x', deleted_at:null }];
+  const plan = _catPlanImport(hoja11([fila11('VPK-1006','VTH',1)]), map11, {}, arts, []);
+  eq(plan.resumen.nuevos, 0, 'no da de alta un duplicado');
+  eq(plan.articulos.update[0] && plan.articulos.update[0].id, 9, 'actualiza el que ya estaba');
+  ok(!('codigo_articulo' in plan.articulos.update[0].payload), 'y no le cambia cómo está escrito el código');
+}
+
+head('F1.1-a — en el mismo archivo: se pregunta, no se fusiona en silencio');
+{
+  const rows = [ fila11('VPK 1006','VTH',2,'FIAT','PALIO'), fila11('VPK-1006','VTH',3,'FORD','KA'), fila11('VPK1006','VTH',1) ];
+  const p = _catPlanImport(hoja11(rows), map11, {}, [], []);
+  eq(p.resumen.nuevos, 1, 'la primera entra como alta');
+  eq(p.dudasCodigo.length, 1, 'una pregunta (un grupo)');
+  eq(p.dudasCodigo[0].codigos.join(' | '), 'VPK 1006 | VPK-1006 | VPK1006', 'la pregunta lista las tres escrituras');
+  eq(p.dudasCodigo[0].filas, 2, '2 filas esperando la respuesta');
+  eq(p.aplicaciones.insert.length, 1, 'las aplicaciones de las filas en duda no entran todavía');
+  eq(p.preview[0].filas.length, 1, 'el cuerpo del preview muestra sólo la que entra');
+
+  const misma = _catPlanImport(hoja11(rows), map11, { decisiones:{ codigo:{ [p.dudasCodigo[0].clave]:'misma' } } }, [], []);
+  eq(misma.dudasCodigo.length, 0, '"es la misma" → no quedan preguntas');
+  eq(misma.resumen.nuevos, 1, '… un solo artículo');
+  eq(misma.aplicaciones.insert.length, 2, '… con las dos aplicaciones');
+
+  const otra = _catPlanImport(hoja11(rows), map11, { decisiones:{ codigo:{ [p.dudasCodigo[0].clave]:'otra' } } }, [], []);
+  eq(otra.dudasCodigo.length, 0, '"es otra" → no quedan preguntas');
+  eq(otra.resumen.nuevos, 1, '… entra sólo la primera');
+  eq(otra.paraCorregir.length, 2, '… y las otras dos van a "para corregir a mano"');
+  eq(otra.aplicaciones.insert.length, 1, '… sin sus aplicaciones');
+}
+
+head('F1.1-a — mismo código escrito igual (o sólo distinto en mayúsculas) no pregunta nada');
+{
+  const p = _catPlanImport(hoja11([ fila11('VPK-1006','VTH',1), fila11('vpk-1006','VTH',1) ]), map11, {}, [], []);
+  eq(p.dudasCodigo.length, 0, 'mayúsculas no cuentan como "escrito distinto"');
+  const q = _catPlanImport(hoja11([ fila11('VPK 1006','VTH',1), fila11('VPK-1006','SKF',1) ]), map11, {}, [], []);
+  eq(q.dudasCodigo.length, 0, 'con OTRA marca no hay duda: son dos artículos');
+  eq(q.resumen.nuevos, 2, '… dos altas');
 }
 
 // --- resumen final -----------------------------------------------------------
