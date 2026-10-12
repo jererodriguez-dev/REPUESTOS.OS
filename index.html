@@ -2039,6 +2039,16 @@ function _catAutodetect(headers){
 // alcanzaría: Postgres trata cada NULL como distinto).
 function _catAplKey(id,marca,modelo,motor){ return id+'|'+_normTxt(marca)+'|'+_normTxt(modelo)+'|'+_normTxt(motor); }
 
+// F1.1 — clave de identidad de un artículo: espeja ux_articulos_cod_marca de la base
+// (lower(codigo), lower(coalesce(marca,''))). Dos filas son el MISMO artículo si coinciden
+// código Y marca. El \u0000 como separador no puede aparecer en un dato real (un '|' sí podría).
+// Es la ÚNICA función que arma esta clave: la usan el plan, catAplicar y el harness.
+function _catClaveArt(codigo, marca){
+  return String(codigo==null?'':codigo).trim().toLowerCase()
+       + '\u0000'
+       + String(marca==null?'':marca).trim().toLowerCase();
+}
+
 // ¿el token parece código de motor? (letras + números: K4M, DV6, K9K, TU5JP4).
 // "206" o "1.6" (solo números) NO son motor → quedan como modelo.
 function _esMotor(t){
@@ -2190,16 +2200,22 @@ function _catParesDeFila(fila, detectados, destino, ctx){
 function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   opts=opts||{}; map=map||{};
   const sep=!!opts.separarAplic;
+  // F1.1: indexado por (código + marca). Trae también los borrados (para revivir); si para la
+  // misma clave hay uno vivo y uno borrado (el índice de la base es parcial y lo permite), gana el vivo.
   const mapaArt={};
-  (dbArticulos||[]).forEach(a=>{ mapaArt[String(a.codigo_articulo).trim().toLowerCase()]=a; });
+  (dbArticulos||[]).forEach(a=>{
+    const k=_catClaveArt(a.codigo_articulo, a.marca_articulo);
+    const prev=mapaArt[k];
+    if(!prev || (prev.deleted_at && !a.deleted_at)) mapaArt[k]=a;
+  });
   const dbApl=new Set();
   (dbAplicaciones||[]).forEach(a=>dbApl.add(_catAplKey(a.id_articulo,a.marca,a.modelo,a.motor)));
 
   const plan={ articulos:{insert:[],update:[],error:[]}, aplicaciones:{insert:[],skip:[]}, noParseados:[], warnings:[], preview:[], rubrosPendientes:[] };
   if(sep && !map.aplic) plan.warnings.push('Activaste “separar por ///” pero no mapeaste la columna Aplicaciones.');
 
-  const vistosCod=new Map();   // cl -> {existente}: código ya visto en el archivo (mismo artículo, +aplicaciones)
-  const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código)
+  const vistosCod=new Map();   // cl -> {existente}: (código+marca) ya visto en el archivo (mismo artículo, +aplicaciones)
+  const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código+marca)
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
   const grupos=new Map();      // rubroId (o '__sin__') -> bloque del preview
@@ -2243,12 +2259,12 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       let stock=0; if(map.stock||fijos.stock!==undefined){ const n=parseInt(get('stock').replace(/[^0-9\-]/g,''),10); stock=isNaN(n)?0:n; }
 
       let estado, existente=null, apps=[];
-      const cl=codigo.toLowerCase();
+      const cl=_catClaveArt(codigo, marca_art);   // F1.1: mismo código con otra marca = OTRO artículo
       if(!codigo){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta código'}); }
       else if(!vistosCod.has(cl) && !descripcion){ estado='err'; plan.articulos.error.push({hoja:h.nombre,codigo,desc:descBase,motivo:'falta descripción'}); }
       else{
         if(vistosCod.has(cl)){
-          // mismo código repetido → mismo artículo, sólo suma aplicaciones (plantilla: "mismo código = otra aplicación")
+          // mismo código Y misma marca repetidos → mismo artículo, sólo suma aplicaciones (plantilla: "mismo código = otra aplicación")
           estado='masapl'; existente=vistosCod.get(cl).existente;
         }else{
           existente=mapaArt[cl]||null;
@@ -2264,10 +2280,10 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             // snapshot de los valores que vamos a pisar, para poder DESHACER esta importación
             const antes={descripcion:existente.descripcion, marca_articulo:existente.marca_articulo, rubro_id:existente.rubro_id};
             if(esRevive){ payload.deleted_at=null; antes.deleted_at=existente.deleted_at; }   // revivir; deshacer vuelve a soft-deletear
-            plan.articulos.update.push({id:existente.id, codigo, payload, antes, reviv:esRevive});
+            plan.articulos.update.push({id:existente.id, codigo, marca_art, payload, antes, reviv:esRevive});
           }else{
             estado='nuevo';
-            plan.articulos.insert.push({codigo, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
+            plan.articulos.insert.push({codigo, marca_art, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
           }
         }
         // aplicaciones: del choricito (sep ON) o de las columnas estructuradas (sep OFF)
@@ -2283,10 +2299,11 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
         }
         apps.forEach(ap=>{
           const wkey=cl+'|'+_normTxt(ap.marca)+'|'+_normTxt(ap.modelo)+'|'+_normTxt(ap.motor);
-          if(vistosApl.has(wkey)){ plan.aplicaciones.skip.push({codigo, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, motivo:'dup-archivo'}); return; }
+          if(vistosApl.has(wkey)){ plan.aplicaciones.skip.push({codigo, marca_art, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, motivo:'dup-archivo'}); return; }
           vistosApl.add(wkey);
-          if(existente && dbApl.has(_catAplKey(existente.id, ap.marca, ap.modelo, ap.motor))){ plan.aplicaciones.skip.push({codigo, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, motivo:'dup-base'}); return; }
-          plan.aplicaciones.insert.push({codigo, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, anio_desde:ap.anio_desde||null, anio_hasta:ap.anio_hasta||null});
+          if(existente && dbApl.has(_catAplKey(existente.id, ap.marca, ap.modelo, ap.motor))){ plan.aplicaciones.skip.push({codigo, marca_art, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, motivo:'dup-base'}); return; }
+          // marca_art = marca del ARTÍCULO (para resolver el id con la clave); marca = marca del VEHÍCULO
+          plan.aplicaciones.insert.push({codigo, marca_art, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, anio_desde:ap.anio_desde||null, anio_hasta:ap.anio_hasta||null});
         });
       }
       // el bloque del preview lo elige el rubro de LA FILA, no el de la hoja (F1.0c-2).
@@ -2777,17 +2794,19 @@ async function catAplicar(){
   const ins=plan.articulos.insert, upds=plan.articulos.update, apps=plan.aplicaciones.insert;
   if(!ins.length && !upds.length && !apps.length){toast('No hay nada para aplicar',true);return;}
   const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;
-  let proc=0, err=0, aplOk=0, aplErr=0;
-  const codigoToId={};
+  let proc=0, err=0, aplOk=0, aplErr=0, aplSinArt=0;
+  // F1.1: (código + marca) → id. Con el código pelado, dos marcas con el mismo código se pisaban
+  // y las aplicaciones de una terminaban colgadas de la otra.
+  const claveToId={};
   const altaArtIds=[], altaAplIds=[];   // ids reales generados por la base → snapshot para DESHACER
   const CH=50;
 
   // 1) altas: insert con stock, recuperando id por código
   for(let i=0;i<ins.length;i+=CH){
     const slice=ins.slice(i,i+CH);
-    const {data,error}=await _sb.from('articulos').insert(slice.map(x=>x.payload)).select('id,codigo_articulo');
+    const {data,error}=await _sb.from('articulos').insert(slice.map(x=>x.payload)).select('id,codigo_articulo,marca_articulo');
     if(error){ err+=slice.length; }
-    else { data.forEach(a=>{ codigoToId[String(a.codigo_articulo).toLowerCase()]=a.id; altaArtIds.push(a.id); }); proc+=data.length; }
+    else { data.forEach(a=>{ claveToId[_catClaveArt(a.codigo_articulo, a.marca_articulo)]=a.id; altaArtIds.push(a.id); }); proc+=data.length; }
     btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+CH,ins.length)}/${ins.length} altas`;
   }
   // 2) updates SIN stock (lo bloquea la base) — la descripción se pisa con la computada desde la planilla
@@ -2795,14 +2814,15 @@ async function catAplicar(){
     await Promise.all(upds.slice(i,i+20).map(async u=>{
       const {error}=await _sb.from('articulos').update(u.payload).eq('id',u.id);
       if(error){err++;return;}
-      codigoToId[u.codigo.toLowerCase()]=u.id; proc++;
+      claveToId[_catClaveArt(u.codigo, u.marca_art)]=u.id; proc++;
     }));
     btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+20,upds.length)}/${upds.length} updates`;
   }
   // 3) aplicaciones (ya deduplicadas en el plan contra el archivo y la base): resolver código→id e insertar
   const aplPayload=[];
   apps.forEach(a=>{
-    const idArt=codigoToId[a.codigo.toLowerCase()]; if(!idArt) return;
+    const idArt=claveToId[_catClaveArt(a.codigo, a.marca_art)];
+    if(!idArt){ aplSinArt++; return; }   // no se pierde en silencio: se cuenta y sale en el toast
     aplPayload.push({id_articulo:idArt, marca:a.marca, modelo:a.modelo||null, motor:a.motor||null, anio_desde:a.anio_desde||null, anio_hasta:a.anio_hasta||null});
   });
   for(let i=0;i<aplPayload.length;i+=CH){
@@ -2817,7 +2837,8 @@ async function catAplicar(){
   let msg=`${proc} artículos (${ins.length} altas / ${upds.length} updates) · ${aplOk} aplicaciones`;
   if(err) msg+=` · ${err} con error`;
   if(aplErr) msg+=` · ${aplErr} aplic. fallaron`;
-  toast(msg, !!(err||aplErr));
+  if(aplSinArt) msg+=` · ${aplSinArt} aplicaciones sin artículo`;
+  toast(msg, !!(err||aplErr||aplSinArt));
   initImportCat();
   renderAdminArt();
 }

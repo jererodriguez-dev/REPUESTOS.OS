@@ -18,12 +18,12 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
 const { _catPartirNumerado, _catDetectarPares, _catParesDeFila, _catAutodetect, _catParseAplic, _catResolverRubro, _catHojaIgnorada, _catVWindow, _catPlanImport,
-        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro } = core;
+        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro, _catClaveArt } = core;
 
 // --- mini framework de asserts ----------------------------------------------
 let pass = 0, fail = 0;
@@ -36,20 +36,27 @@ function eq(a, b, msg) { ok(a === b, `${msg} ${C.d}(esperado ${JSON.stringify(b)
 function head(t) { console.log(`\n${C.b}${t}${C.x}`); }
 
 // --- simulación de "base de datos" para la idempotencia ----------------------
+// F1.1: la base simulada indexa por la CLAVE (código + marca), igual que la real
+// (ux_articulos_cod_marca). Con el código pelado el harness daba PASS con el comportamiento viejo.
 const makeDB = () => ({ articulos:[], aplicaciones:[], codToId:{}, nextId:1 });
 const dbView = db => ({
-  arts: db.articulos.map(a => ({ id:a.id, codigo_articulo:a.codigo_articulo })),
+  arts: db.articulos.map(a => ({ id:a.id, codigo_articulo:a.codigo_articulo, marca_articulo:a.marca_articulo, deleted_at:a.deleted_at||null })),
   apls: db.aplicaciones.map(a => ({ id_articulo:a.id_articulo, marca:a.marca, modelo:a.modelo, motor:a.motor })),
 });
 function aplicarSim(plan, db) {
   plan.articulos.insert.forEach(x => {
     const id = db.nextId++;
-    db.articulos.push({ id, codigo_articulo:x.payload.codigo_articulo, descripcion:x.payload.descripcion });
-    db.codToId[x.payload.codigo_articulo.toLowerCase()] = id;
+    db.articulos.push({ id, codigo_articulo:x.payload.codigo_articulo, marca_articulo:x.payload.marca_articulo, descripcion:x.payload.descripcion, stock:x.payload.stock });
+    db.codToId[_catClaveArt(x.payload.codigo_articulo, x.payload.marca_articulo)] = id;
   });
-  plan.articulos.update.forEach(u => { const a = db.articulos.find(z => z.id === u.id); if (a) a.descripcion = u.payload.descripcion; });
+  plan.articulos.update.forEach(u => {
+    const a = db.articulos.find(z => z.id === u.id); if (!a) return;
+    a.descripcion = u.payload.descripcion;
+    if ('deleted_at' in u.payload) a.deleted_at = u.payload.deleted_at;
+    db.codToId[_catClaveArt(u.codigo, u.marca_art)] = u.id;
+  });
   plan.aplicaciones.insert.forEach(a => {
-    const id = db.codToId[a.codigo.toLowerCase()];
+    const id = db.codToId[_catClaveArt(a.codigo, a.marca_art)];
     db.aplicaciones.push({ id_articulo:id, marca:a.marca, modelo:a.modelo, motor:a.motor, anio_desde:a.anio_desde, anio_hasta:a.anio_hasta });
   });
 }
@@ -418,7 +425,8 @@ head('FIXTURE (f) — revive de fila soft-deleted (punto fino #1: UNIQUE codigo_
   };
   const map = _catAutodetect(fxF.headers);
   // RLM-7 está en la base pero soft-deleted (deleted_at != null) con valores viejos
-  const arts = [{ id:77, codigo_articulo:'RLM-7', descripcion:'desc vieja', marca_articulo:'OLD', rubro_id:'r-old', deleted_at:'2026-06-10T00:00:00Z' }];
+  // [11/10, F1.1, ok de Jere] la marca de la base era 'OLD': con código+marca eso ya es OTRO artículo.
+  const arts = [{ id:77, codigo_articulo:'RLM-7', descripcion:'desc vieja', marca_articulo:'NSK', rubro_id:'r-old', deleted_at:'2026-06-10T00:00:00Z' }];
   const hojas = [{ nombre:fxF.nombre, rows:fxF.rows, rubroId:'r-rulemanes', rubroNombre:'RULEMANES' }];
   const plan = _catPlanImport(hojas, map, { separarAplic:false }, arts, []);
   eq(plan.articulos.insert.length, 1, 'RLM-9 (inexistente) → 1 alta');
@@ -449,8 +457,9 @@ head('FIXTURE (g) — el rubro del artículo existente lo decide Jere, no el arc
   const map = _catAutodetect(fxG.headers);
   // los dos que ya existen están clasificados a mano en OTRO rubro que el de la hoja
   const arts = [
-    { id:1, codigo_articulo:'RLM-1', descripcion:'desc vieja', marca_articulo:'OLD', rubro_id:'r-clasificado-a-mano', deleted_at:null },
-    { id:3, codigo_articulo:'RLM-3', descripcion:'desc vieja', marca_articulo:'OLD', rubro_id:'r-clasificado-a-mano', deleted_at:'2026-06-10T00:00:00Z' },
+    // [11/10, F1.1, ok de Jere] la marca de la base era 'OLD': con código+marca eso ya es OTRO artículo.
+    { id:1, codigo_articulo:'RLM-1', descripcion:'desc vieja', marca_articulo:'SKF', rubro_id:'r-clasificado-a-mano', deleted_at:null },
+    { id:3, codigo_articulo:'RLM-3', descripcion:'desc vieja', marca_articulo:'FAG', rubro_id:'r-clasificado-a-mano', deleted_at:'2026-06-10T00:00:00Z' },
   ];
   const hojas = [{ nombre:fxG.nombre, rows:fxG.rows, rubroId:'r-de-la-hoja', rubroNombre:'RULEMANES' }];
   const plan = _catPlanImport(hojas, map, { separarAplic:false }, arts, []);
@@ -850,6 +859,89 @@ head('F1.3 — el motor todavía NO está enchufado (el plan lo pide así)');
   const plan = _catPlanImport(hojas, map, { separarAplic:false }, [], []);
   eq(plan.articulos.insert.length, 1, 'el importador sigue dando de alta el artículo igual que antes');
   eq(plan.warnings.length, 0, 'y las columnas de pares no le generan ruido');
+}
+
+// ===========================================================================
+// F1.1 — el artículo se identifica por CÓDIGO + MARCA (opción B, 21/09)
+// ===========================================================================
+const H11 = ['Código','Descripción','Marca artículo','Marca aplicación','Modelo','Stock'];
+const map11 = _catAutodetect(H11);
+const fila11 = (cod, marca, stock, apl, modelo) => ({ 'Código':cod, 'Descripción':'Ruleman '+cod, 'Marca artículo':marca, 'Marca aplicación':apl||'', 'Modelo':modelo||'', 'Stock':stock });
+const hoja11 = rows => [{ nombre:'RULEMANES', rubroId:'r-rlm', rubroNombre:'RULEMANES', rows }];
+const filas3 = [ fila11('RLM-6204','TRW',5), fila11('RLM-6204','SKF',3), fila11('RLM-6204','NAKATA',7) ];
+
+head('F1.1 — caso 1: mismo código, tres marcas → tres artículos');
+{
+  const plan = runPlan(hoja11(filas3), map11, {}, makeDB());
+  eq(plan.resumen.nuevos, 3, 'nuevos: 3');
+  eq(plan.resumen.err, 0, 'err: 0');
+  const st = m => (plan.articulos.insert.find(x => x.payload.marca_articulo === m) || { payload:{} }).payload.stock;
+  eq(st('TRW'), 5, 'TRW con su stock 5');
+  eq(st('SKF'), 3, 'SKF con su stock 3');
+  eq(st('NAKATA'), 7, 'NAKATA con su stock 7');
+  eq(plan.preview[0].filas.filter(f => f.estado === 'masapl').length, 0, 'ninguna fila queda como "+ aplic." (antes se descartaban en silencio)');
+}
+
+head('F1.1 — caso 2: mismo código Y misma marca en dos filas → un artículo, dos aplicaciones');
+{
+  const plan = runPlan(hoja11([ fila11('RLM-6204','TRW',5,'RENAULT','CLIO'), fila11('RLM-6204','TRW',5,'RENAULT','KANGOO') ]), map11, {}, makeDB());
+  eq(plan.resumen.nuevos, 1, 'nuevos: 1 (la regla vieja "mismo código = otra aplicación" sigue viva)');
+  eq(plan.aplicaciones.insert.length, 2, '2 aplicaciones');
+  eq(plan.aplicaciones.insert.every(a => _catClaveArt(a.codigo, a.marca_art) === _catClaveArt('RLM-6204','TRW')), true, 'las dos cuelgan del mismo artículo');
+}
+
+head('F1.1 — caso 3: reimportar el archivo del caso 1 → 0 nuevos, 3 a actualizar');
+{
+  const db = makeDB();
+  aplicarSim(runPlan(hoja11(filas3), map11, {}, db), db);
+  const plan2 = runPlan(hoja11(filas3), map11, {}, db);
+  eq(plan2.resumen.nuevos, 0, 'nuevos: 0');
+  eq(plan2.resumen.upd, 3, 'upd: 3');
+  eq(new Set(plan2.articulos.update.map(u => u.id)).size, 3, 'cada update apunta a un artículo distinto');
+}
+
+head('F1.1 — caso 4: marca vacía');
+{
+  const p1 = runPlan(hoja11([ fila11('RLM-1','',1), fila11('RLM-1','',2) ]), map11, {}, makeDB());
+  eq(p1.resumen.nuevos, 1, 'dos filas sin marca, mismo código → nuevos: 1 (coalesce \'\' las junta)');
+  const p2 = runPlan(hoja11([ fila11('RLM-1','',1), fila11('RLM-1','TRW',2) ]), map11, {}, makeDB());
+  eq(p2.resumen.nuevos, 2, 'una sin marca y una TRW → nuevos: 2');
+}
+
+head('F1.1 — caso 5: revivir respeta la marca');
+{
+  const borr = m => [{ id:50, codigo_articulo:'RLM-6204', marca_articulo:m, descripcion:'vieja', rubro_id:'r-rlm', deleted_at:'2026-01-01T00:00:00Z' }];
+  const a = _catPlanImport(hoja11([fila11('RLM-6204','TRW',1)]), map11, {}, borr('TRW'), []);
+  eq(a.resumen.reviv, 1, '(RLM-6204,TRW) borrado + fila TRW → reviv: 1');
+  eq(a.resumen.nuevos, 0, '… y nuevos: 0');
+  const b = _catPlanImport(hoja11([fila11('RLM-6204','TRW',1)]), map11, {}, borr('SKF'), []);
+  eq(b.resumen.nuevos, 1, '(RLM-6204,SKF) borrado + fila TRW → nuevos: 1');
+  eq(b.resumen.reviv, 0, '… y reviv: 0');
+  // vivo y borrado con la misma clave (el índice parcial lo permite): gana el vivo
+  const c = _catPlanImport(hoja11([fila11('RLM-6204','TRW',1)]), map11, {}, [
+    { id:51, codigo_articulo:'RLM-6204', marca_articulo:'TRW', descripcion:'x', deleted_at:'2026-01-01T00:00:00Z' },
+    { id:52, codigo_articulo:'RLM-6204', marca_articulo:'TRW', descripcion:'x', deleted_at:null },
+  ], []);
+  eq(c.articulos.update[0] && c.articulos.update[0].id, 52, 'vivo + borrado con la misma clave → actualiza el vivo, no revive el otro');
+}
+
+head('F1.1 — caso 6: las aplicaciones van al artículo correcto (no se cruzan)');
+{
+  const db = makeDB();
+  const plan = runPlan(hoja11([ fila11('RLM-6204','TRW',1,'FIAT','PALIO'), fila11('RLM-6204','SKF',1,'FORD','KA') ]), map11, {}, db);
+  aplicarSim(plan, db);
+  const idTRW = db.articulos.find(a => a.marca_articulo === 'TRW').id;
+  const idSKF = db.articulos.find(a => a.marca_articulo === 'SKF').id;
+  eq(db.aplicaciones.filter(a => a.id_articulo === idTRW).map(a => a.marca).join(','), 'FIAT', 'TRW tiene solo FIAT');
+  eq(db.aplicaciones.filter(a => a.id_articulo === idSKF).map(a => a.marca).join(','), 'FORD', 'SKF tiene solo FORD');
+}
+
+head('F1.1 — caso 7: mayúsculas (la clave normaliza igual que el índice de la base)');
+{
+  const plan = runPlan(hoja11([ fila11('RLM-6204','TRW',1), fila11('rlm-6204','trw',1) ]), map11, {}, makeDB());
+  eq(plan.resumen.nuevos, 1, 'RLM-6204/TRW y rlm-6204/trw → nuevos: 1');
+  eq(_catClaveArt(' RLM-6204 ', 'TRW '), _catClaveArt('rlm-6204', 'trw'), '_catClaveArt: trim + minúsculas');
+  ok(_catClaveArt('A', 'B|C') !== _catClaveArt('A|B', 'C'), '_catClaveArt: un "|" en el dato no hace chocar dos claves');
 }
 
 // --- resumen final -----------------------------------------------------------
