@@ -2454,7 +2454,7 @@ const CAT_ENCHUFES={
   // (la tabla `equivalencias` de hoy une artículo↔base_id; no guarda "fábrica + código").
   codigos_equivalentes:{ k:it=>_normTxt(it.marca_texto)+'\u0000'+_catNormCodigo(it.codigo), upd:null },
 };
-const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas','datos_tecnicos'];
+const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas','datos_tecnicos','codigos_equivalentes']; // F1.3b prendido (solo /prueba/ hasta correr el SQL en la real)
 
 // F1.3c — columnas OEM: no son pares, son códigos sueltos ("OEM 1", "OEM 2", "OEM"). Ordenadas por número.
 function _catColsOem(headers){
@@ -2492,7 +2492,11 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
     const r=_catParesDeFila(fila, det, 'equivalencias', ctx);
     warnings.push(...r.warnings);
     items._equivalencias=r.filas.map(p=>({marca_texto:p.nombre, codigo:p.valor}));
-    if(on('codigos_equivalentes')) items.codigos_equivalentes=items._equivalencias.slice();
+    if(on('codigos_equivalentes')){
+      // crudo (marca_texto + codigo) + marca_id si la fábrica está en la lista (por nombre o alias)
+      const _mdb=(typeof marcasDB!=='undefined')?marcasDB:[], _adb=(typeof aliasMarcasDB!=='undefined')?aliasMarcasDB:[];
+      items.codigos_equivalentes=items._equivalencias.map(e=>{ const r=_catResolverMarca(e.marca_texto,_mdb,_adb); return {marca_texto:e.marca_texto, codigo:e.codigo, marca_id:r?r.marcaId:null}; });
+    }
   }
   if(on('datos_tecnicos')){
     // F1.3e: igual que medidas (nombre = el dato, valor = texto)
@@ -3612,7 +3616,7 @@ function catRenderPreview(){
 
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
-  if(R.hijosIns||R.hijosUpd) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.hijosIns}</b> datos extra nuevos${R.hijosUpd?` (${R.hijosUpd} a actualizar)`:''} <span style="color:var(--text3)">(${Object.keys(plan.hijos).filter(t=>plan.hijos[t].insert.length||plan.hijos[t].update.length).map(t=>({codigos_proveedor:'cód. proveedor',oems:'OEM',medidas:'medidas',datos_tecnicos:'datos técnicos'})[t]||t).join(', ')})</span>`;
+  if(R.hijosIns||R.hijosUpd) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.hijosIns}</b> datos extra nuevos${R.hijosUpd?` (${R.hijosUpd} a actualizar)`:''} <span style="color:var(--text3)">(${Object.keys(plan.hijos).filter(t=>plan.hijos[t].insert.length||plan.hijos[t].update.length).map(t=>({codigos_proveedor:'cód. proveedor',oems:'OEM',medidas:'medidas',datos_tecnicos:'datos técnicos',codigos_equivalentes:'equivalencias'})[t]||t).join(', ')})</span>`;
   if(R.baseAsig) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.baseAsig}</b> se agrupan como equivalentes${R.baseNuevos?` (${R.baseNuevos} grupo${R.baseNuevos===1?'':'s'} nuevo${R.baseNuevos===1?'':'s'})`:''}`;
   if(R.sinMarca) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.sinMarca} sin marca</span>`;
   if(R.provPend) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.provPend} fila${R.provPend===1?'':'s'} sin proveedor conocido</span>`;
