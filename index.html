@@ -250,7 +250,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <select id="f-rubro"><option value="">— Todos —</option></select>
       </div>
       <div class="sep">›</div>
-      <div class="fg"><label>Marca vehículo</label>
+      <div class="fg"><label>Marca del auto</label>
         <select id="f-marca-veh"><option value="">— Todas —</option>
           <option>Chevrolet</option><option>Ford</option><option>Volkswagen</option>
           <option>Renault</option><option>Toyota</option><option>Fiat</option><option>Honda</option>
@@ -361,6 +361,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="tab" data-admin="cli">Clientes</div>
       <div class="tab" data-admin="ven">Ventas</div>
       <div class="tab" data-admin="rubros">Rubros</div>
+      <div class="tab" data-admin="marcas">Marcas</div>
       <div class="tab" data-admin="imp">Importar precios</div>
       <div class="tab" data-admin="cat">Importar catálogo</div>
       <div class="tab" data-admin="gest">Gestión de datos</div>
@@ -402,6 +403,19 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="card" style="padding:0;overflow:hidden">
         <table><thead><tr><th>Nombre</th><th>Datos técnicos</th><th>Medidas</th><th></th></tr></thead>
         <tbody id="admin-rubros-tabla"></tbody></table>
+      </div>
+    </div>
+    <div id="admin-marcas-panel" style="display:none">
+      <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap">
+        <input id="nueva-marca-nombre" placeholder="Nombre de la fábrica nueva" style="max-width:220px">
+        <button class="btn primary sm" onclick="crearMarca()"><i class="ti ti-plus"></i>Nueva fábrica</button>
+        <input id="admin-search-marca" placeholder="Buscar…" style="max-width:180px" oninput="renderAdminMarcas()">
+        <span id="admin-marcas-cuenta" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <p style="font-size:11px;color:var(--text2);margin:0 0 10px;line-height:1.5">Las <b>fábricas</b> son las marcas de los repuestos (TRW, VTH…). Un <b>alias</b> es otra forma en que aparece escrita en las planillas (FREEMAX → FREMAX): el importador la reconoce sola. Renombrar una fábrica actualiza sus artículos.</p>
+      <div class="card" style="padding:0;overflow:hidden">
+        <table><thead><tr><th>Fábrica</th><th>Alias</th><th></th></tr></thead>
+        <tbody id="admin-marcas-tabla"></tbody></table>
       </div>
     </div>
     <div id="admin-imp-panel" style="display:none">
@@ -500,8 +514,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
           <div class="fg" style="margin-bottom:0"><label>Código *</label><select id="cat-col-codigo"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Código barra</label><select id="cat-col-codigo_barra"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Descripción *</label><select id="cat-col-descripcion"></select></div>
-          <div class="fg" style="margin-bottom:0"><label>Marca artículo</label><select id="cat-col-marca_art"></select><input class="cat-fijo" id="cat-fijo-marca_art" placeholder="o valor fijo…"></div>
-          <div class="fg" style="margin-bottom:0"><label>Marca aplicación</label><select id="cat-col-marca_apl"></select><input class="cat-fijo" id="cat-fijo-marca_apl" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Fábrica <span style="color:var(--text3);text-transform:none">(marca del repuesto)</span></label><select id="cat-col-marca_art"></select><input class="cat-fijo" id="cat-fijo-marca_art" list="dl-marcas" autocomplete="off" placeholder="o valor fijo (buscá en la lista)…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Marca del auto</label><select id="cat-col-marca_apl"></select><input class="cat-fijo" id="cat-fijo-marca_apl" placeholder="o valor fijo…"></div>
           <div class="fg" style="margin-bottom:0"><label>Modelo</label><select id="cat-col-modelo"></select><input class="cat-fijo" id="cat-fijo-modelo" placeholder="o valor fijo…"></div>
           <div class="fg" style="margin-bottom:0"><label>Motor</label><select id="cat-col-motor"></select><input class="cat-fijo" id="cat-fijo-motor" placeholder="o valor fijo…"></div>
           <div class="fg" style="margin-bottom:0"><label>Aplicaciones <span style="color:var(--text3);text-transform:none">(celda ///)</span></label><select id="cat-col-aplic"></select></div>
@@ -600,6 +614,9 @@ tr:hover td{background:var(--bg3);color:var(--text)}
 </div>
 </div>
 
+<!-- F1.13: lista de marcas (fábricas) para todos los buscadores de marca -->
+<datalist id="dl-marcas"></datalist>
+
 <!-- MODAL FICHA ARTÍCULO -->
 <div class="modal-bg" id="modal-ficha">
   <div class="modal">
@@ -615,7 +632,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg"><label>Código barra</label><input id="ficha-barra" placeholder="7790001234"></div>
         <div class="fg"><label>Rubro</label><select id="ficha-rubro"><option value="">— Seleccionar —</option></select></div>
         <div class="fg"><label>Descripción</label><input id="ficha-desc" placeholder="Amortiguador del. KYB Corsa"></div>
-        <div class="fg"><label>Marca artículo</label><input id="ficha-marca-art" placeholder="KYB, TRW..."></div>
+        <div class="fg"><label>Fábrica <span style="color:var(--text3);font-weight:400">(de la lista)</span></label><input id="ficha-marca-art" list="dl-marcas" placeholder="Buscá: TRW, VTH…" autocomplete="off"></div>
         <div class="fg"><label>Base ID <span style="color:var(--text3);font-weight:400">(agrupa equivalentes)</span></label><input id="ficha-baseid" placeholder="AMORT-CORSA-DEL" onblur="verificarBaseId(this.value)"></div>
         <div class="fg"><label>Ubicación en depósito</label><input id="ficha-ubic" placeholder="Estante A3"></div>
         <div class="fg"><label>Unidad de medida</label><select id="ficha-um"><option value="UN">Unidad</option><option value="PAR">Par</option><option value="KIT">Kit</option><option value="LT">Litro</option></select></div>
@@ -655,7 +672,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
       <div class="sec-title">Aplicaciones (vehículos compatibles)</div>
       <div style="overflow-x:auto;margin-bottom:8px">
         <table class="app-table">
-          <thead><tr><th>Marca</th><th>Modelo</th><th>Año desde</th><th>Año hasta</th><th>Cilindrada</th><th>Motor</th><th>Observación</th><th></th></tr></thead>
+          <thead><tr><th>Marca del auto</th><th>Modelo</th><th>Año desde</th><th>Año hasta</th><th>Cilindrada</th><th>Motor</th><th>Observación</th><th></th></tr></thead>
           <tbody id="apps-tbody"></tbody>
         </table>
       </div>
@@ -804,6 +821,19 @@ tr:hover td{background:var(--bg3);color:var(--text)}
 </div>
 
 <!-- MODAL CONFIRMAR ELIMINACIÓN RUBRO -->
+<div class="modal-bg" id="modal-confirmar-marca">
+  <div class="modal modal-sm">
+    <div class="modal-header"><div class="modal-title" style="color:var(--danger)"><i class="ti ti-alert-triangle"></i> Dar de baja fábrica</div>
+      <button class="btn sm" onclick="closeModal('modal-confirmar-marca')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <p style="font-size:13px">¿Dar de baja <b id="confirm-marca-nombre"></b>? Deja de aparecer en la lista; los artículos que ya la tienen no cambian.</p>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn sm" onclick="closeModal('modal-confirmar-marca')">Cancelar</button>
+        <button class="btn sm danger" onclick="confirmarBajaMarca()"><i class="ti ti-trash"></i> Dar de baja</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-bg" id="modal-confirmar-rubro">
   <div class="modal modal-sm">
     <div class="modal-header">
@@ -1004,6 +1034,8 @@ const medidasPorRubro={
   'Correas':['Largo (mm)','Ancho (mm)','Perfil','N° dientes'],
 };
 let rubrosDB=[];
+let marcasDB=[];        // F1.13: fábricas activas [{id,nombre}]
+let aliasMarcasDB=[];   // F1.13: alias_marcas activos [{id,alias_texto,marca_id}]
 let aliasDB=[];   // alias hoja→rubro para el importador de catálogo (alias_rubros)
 let _baseIdHeredado=null;
 
@@ -1113,6 +1145,84 @@ async function cargarRubrosSelect(){
   document.getElementById('top-rubro').innerHTML='<option value="">Todos</option>'+opts;
 }
 
+// ── F1.13 MARCAS (fábricas) ──
+async function cargarMarcas(){
+  const {data,error}=await _sb.from('marcas').select('id,nombre').is('deleted_at',null).order('nombre');
+  if(!error) marcasDB=data||[];
+  const {data:al,error:e2}=await _sb.from('alias_marcas').select('id,alias_texto,marca_id').is('deleted_at',null);
+  if(!e2) aliasMarcasDB=al||[];
+  const dl=document.getElementById('dl-marcas');
+  if(dl) dl.innerHTML=marcasDB.map(m=>`<option value="${_escAttr(m.nombre)}">`).join('');
+}
+function renderAdminMarcas(){
+  const kw=_normTxt(document.getElementById('admin-search-marca')?.value||'');
+  const alias=id=>aliasMarcasDB.filter(a=>a.marca_id===id);
+  const lista=marcasDB.filter(m=>!kw||_normTxt(m.nombre).includes(kw)||alias(m.id).some(a=>a.alias_texto.includes(kw)));
+  document.getElementById('admin-marcas-cuenta').textContent=`${lista.length} de ${marcasDB.length}`;
+  document.getElementById('admin-marcas-tabla').innerHTML=lista.map(m=>`<tr>
+    <td><input value="${_escAttr(m.nombre)}" style="width:180px" onchange="renombrarMarca('${m.id}',this.value,this)"></td>
+    <td style="font-size:11px">${alias(m.id).map(a=>`<span style="display:inline-flex;align-items:center;gap:3px;margin:2px 4px 2px 0;padding:1px 6px;border:1px solid var(--border);border-radius:10px">${_escAttr(a.alias_texto)}<i class="ti ti-x" style="cursor:pointer;color:var(--text3)" title="Quitar alias" onclick="quitarAliasMarca(${a.id})"></i></span>`).join('')}
+      <input placeholder="+ alias" style="width:90px;font-size:11px" onchange="agregarAliasMarca('${m.id}',this.value)"></td>
+    <td><button class="btn sm danger" onclick="pedirBajaMarca('${m.id}')"><i class="ti ti-trash"></i></button></td>
+  </tr>`).join('')||'<tr><td colspan="3" style="color:var(--text3);text-align:center">Sin fábricas</td></tr>';
+}
+// alta. El nombre no se repite (sin importar mayúsculas): lo cuida también la base (ux_marcas_nombre_lower).
+async function crearMarca(nombreIn){
+  const inp=document.getElementById('nueva-marca-nombre');
+  const nombre=String(nombreIn!=null?nombreIn:(inp?inp.value:'')).trim().toUpperCase();
+  if(!nombre){toast('Escribí el nombre de la fábrica',true);return null;}
+  const ya=_catResolverMarca(nombre, marcasDB, aliasMarcasDB);
+  if(ya){toast(`Ya existe: ${ya.marcaNombre}${ya.via==='alias'?' (por alias)':''}`,true);return ya;}
+  const {data,error}=await _sb.from('marcas').insert([{nombre}]).select('id,nombre').single();
+  if(error){toast('Error: '+error.message,true);return null;}
+  if(inp && nombreIn==null) inp.value='';
+  await cargarMarcas(); if(document.getElementById('admin-marcas-panel').style.display!=='none') renderAdminMarcas();
+  toast('Fábrica agregada: '+data.nombre);
+  return {marcaId:data.id, marcaNombre:data.nombre, via:'nueva'};
+}
+// renombrar: también actualiza el texto marca_articulo de sus artículos (por marca_id)
+async function renombrarMarca(id, nuevo, el){
+  const m=marcasDB.find(x=>x.id===id); if(!m) return;
+  nuevo=String(nuevo||'').trim().toUpperCase();
+  if(!nuevo||nuevo===m.nombre){ if(el) el.value=m.nombre; return; }
+  const otra=marcasDB.find(x=>x.id!==id&&_normTxt(x.nombre)===_normTxt(nuevo));
+  if(otra){toast('Ya hay una fábrica con ese nombre',true); if(el) el.value=m.nombre; return;}
+  const {error}=await _sb.from('marcas').update({nombre:nuevo}).eq('id',id);
+  if(error){toast('Error: '+error.message,true); if(el) el.value=m.nombre; return;}
+  const {error:e2}=await _sb.from('articulos').update({marca_articulo:nuevo}).eq('marca_id',id);
+  if(e2) toast('La fábrica se renombró pero no sus artículos: '+e2.message,true);
+  else toast(`Fábrica renombrada: ${m.nombre} → ${nuevo}`);
+  await cargarMarcas(); renderAdminMarcas();
+}
+async function agregarAliasMarca(marcaId, texto){
+  const alias=_normTxt(texto); if(!alias) return;
+  const ya=_catResolverMarca(alias, marcasDB, aliasMarcasDB);
+  if(ya){ toast(ya.marcaId===marcaId?'Ese alias ya estaba':`"${texto}" ya es ${ya.marcaNombre}`,ya.marcaId!==marcaId); renderAdminMarcas(); return; }
+  const {error}=await _sb.from('alias_marcas').insert([{alias_texto:alias, marca_id:marcaId}]);
+  if(error){toast('No se pudo guardar el alias: '+error.message,true);return;}
+  await cargarMarcas(); renderAdminMarcas(); toast('Alias guardado');
+}
+async function quitarAliasMarca(aliasId){
+  const {error}=await _sb.from('alias_marcas').update({deleted_at:new Date().toISOString()}).eq('id',aliasId);
+  if(error){toast('Error: '+error.message,true);return;}
+  await cargarMarcas(); renderAdminMarcas(); toast('Alias quitado');
+}
+// baja = soft delete (se puede recuperar desde Supabase). Los artículos conservan su texto.
+let _marcaBajaId=null;
+function pedirBajaMarca(id){
+  const m=marcasDB.find(x=>x.id===id); if(!m) return;
+  _marcaBajaId=id;
+  document.getElementById('confirm-marca-nombre').textContent=m.nombre;
+  openModal('modal-confirmar-marca');
+}
+async function confirmarBajaMarca(){
+  if(!_marcaBajaId) return;
+  const {error}=await _sb.from('marcas').update({deleted_at:new Date().toISOString()}).eq('id',_marcaBajaId);
+  _marcaBajaId=null; closeModal('modal-confirmar-marca');
+  if(error){toast('Error: '+error.message,true);return;}
+  await cargarMarcas(); renderAdminMarcas(); toast('Fábrica dada de baja');
+}
+
 // ── CATÁLOGO ──
 async function renderCatalogo(){
   const kw=(document.getElementById('f-keyword').value||'').toLowerCase();
@@ -1218,7 +1328,7 @@ async function guardarArticulo(){
     descripcion:desc,
     rubro_id:document.getElementById('ficha-rubro').value||null,
     base_id:document.getElementById('ficha-baseid').value||null,
-    marca_articulo:document.getElementById('ficha-marca-art').value||null,
+    marca_articulo:null, marca_id:null,   // F1.13: se completan abajo con la fábrica de la lista
     precio_venta_actual:precio,
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
     stock:parseInt(document.getElementById('ficha-stock').value)||0,
@@ -1227,6 +1337,13 @@ async function guardarArticulo(){
     unidad_medida:document.getElementById('ficha-um').value||'UN',
     activo:true
   };
+  // F1.13: la fábrica se elige de la lista (o un alias de ella). Se guarda marca_id + nombre oficial.
+  const marcaTxt=document.getElementById('ficha-marca-art').value.trim();
+  if(marcaTxt){
+    const m=_catResolverMarca(marcaTxt, marcasDB, aliasMarcasDB);
+    if(!m){toast(`"${marcaTxt}" no está en la lista de fábricas. Elegila de la lista o creala en Administrar datos → Marcas`,true);return;}
+    obj.marca_articulo=m.marcaNombre; obj.marca_id=m.marcaId;
+  }
   const idExist=document.getElementById('ficha-id').value;
   let artId=idExist?parseInt(idExist):null;
   let error;
@@ -1979,6 +2096,7 @@ let _catBase=null;          // {map, opts, arts, dbApl}
 
 function initImportCat(){
   _catHojas=[]; _catEsCSV=false; _catPlan=null; _catBase=null; _catDecisiones={codigo:{}, prov:{}};
+  if(!marcasDB.length) cargarMarcas();
   _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
   document.getElementById('cat-filename').textContent='';
   ['cat-csv-wrap','cat-rubros-wrap','cat-mapeo','cat-preview-wrap'].forEach(id=>document.getElementById(id).style.display='none');
@@ -1996,8 +2114,10 @@ const CAT_CAMPOS=[
   {key:'codigo',      label:'Código',           cands:['codigo','cod','sku']},
   {key:'codigo_barra',label:'Código barra',     cands:['codigo barra','codigo de barra','cod barra','ean','barra']},
   {key:'descripcion', label:'Descripción',      cands:['descripcion','detalle','denominacion']},
-  {key:'marca_art',   label:'Marca artículo',   cands:['marca articulo','marca','fabricante'], fijo:true},
-  {key:'marca_apl',   label:'Marca aplicación', cands:['marca aplicacion','marca vehiculo','marca apl'], fijo:true},
+  // F1.13 (idea de Jere 10/10): en pantalla la marca del repuesto se llama "Fábrica" y la del
+  // vehículo "Marca del auto". En la base siguen siendo marca_articulo / aplicaciones.marca.
+  {key:'marca_art',   label:'Fábrica',          cands:['marca articulo','marca','fabricante','fabrica'], fijo:true},
+  {key:'marca_apl',   label:'Marca del auto',   cands:['marca aplicacion','marca vehiculo','marca apl','marca del auto','marca auto'], fijo:true},
   {key:'modelo',      label:'Modelo',           cands:['modelo'], fijo:true},
   {key:'motor',       label:'Motor',            cands:['motor','motorizacion'], fijo:true},
   {key:'aplic',       label:'Aplicaciones',     cands:['aplicaciones','aplicacion','aplic','compatibilidad','vehiculos','vehiculo']},
@@ -2113,6 +2233,58 @@ function _catResolverRubro(nombreHoja, rubrosDB, aliasDB){
     if(rr) return {rubroId:rr.id, rubroNombre:rr.nombre, via:'alias'};
   }
   return null;
+}
+
+// ── F1.13 — MARCAS PRECARGADAS (lista `marcas` + `alias_marcas`, mismo molde que rubros) ──
+// Marcas de AUTO conocidas. Es conocimiento del rubro, no un dato de un negocio (white-label ok).
+// Sirve para preguntar cuando una marca de auto aparece en la columna de la fábrica.
+const CAT_MARCAS_AUTO=['alfa romeo','audi','bmw','chery','chevrolet','chrysler','citroen','dacia','daewoo',
+  'dodge','fiat','ford','honda','hyundai','iveco','jeep','kia','land rover','mazda','mercedes','mercedes benz',
+  'mercedes-benz','mitsubishi','nissan','opel','peugeot','renault','scania','seat','skoda','subaru','suzuki',
+  'toyota','volkswagen','vw','volvo','agrale','geely','jac','lifan','ram'];
+
+// resuelve un texto contra la lista: nombre exacto normalizado → alias guardado. null si no matchea.
+function _catResolverMarca(texto, marcasDB, aliasDB){
+  const n=_normTxt(texto); if(!n) return null;
+  const m=(marcasDB||[]).find(x=>_normTxt(x.nombre)===n);
+  if(m) return {marcaId:m.id, marcaNombre:m.nombre, via:'nombre'};
+  const a=(aliasDB||[]).find(x=>_normTxt(x.alias_texto)===n);
+  if(a){
+    const mm=(marcasDB||[]).find(x=>x.id===a.marca_id);
+    if(mm) return {marcaId:mm.id, marcaNombre:mm.nombre, via:'alias'};
+  }
+  return null;
+}
+
+// qué es el texto que vino en la columna de la fábrica:
+//   'ok'        → es una marca de la lista (por nombre exacto o por alias)
+//   'auto'      → es una marca de AUTO (FIAT, FORD…): se pregunta, aunque tenga alias (decidido 11/10)
+//   'original'  → dice "ORIGINAL" solo: falta saber de qué auto
+//   'pendiente' → no se conoce: crear la marca o decir que es alias de otra
+// El nombre EXACTO de la lista gana a todo (GM, MB, MOPAR son marcas de la lista).
+function _catClasificarMarca(texto, marcasDB, aliasDB){
+  const n=_normTxt(texto);
+  const exacta=(marcasDB||[]).find(x=>_normTxt(x.nombre)===n);
+  if(exacta) return {tipo:'ok', marcaId:exacta.id, marcaNombre:exacta.nombre};
+  if(CAT_MARCAS_AUTO.includes(n)) return {tipo:'auto'};
+  const r=_catResolverMarca(texto, marcasDB, aliasDB);
+  if(r) return {tipo:'ok', marcaId:r.marcaId, marcaNombre:r.marcaNombre};
+  if(n==='original') return {tipo:'original'};
+  return {tipo:'pendiente'};
+}
+
+// mapeo de UNA hoja. Caso real (SOPORTES DE MOTOR V2): la hoja trae MARCA (el auto) y MARCAS (la
+// fábrica). Si la columna de fábrica mapeada se llama "MARCA" y la hoja también tiene "MARCAS",
+// en ESA hoja MARCAS es la fábrica y MARCA va a Marca del auto. Las otras hojas no cambian.
+function _catMapaHoja(map, hoja){
+  const hs=(hoja&&hoja.headers)||((hoja&&hoja.rows&&hoja.rows[0])?Object.keys(hoja.rows[0]):[]);
+  if(!map||!map.marca_art||_normTxt(map.marca_art)!=='marca') return map;
+  const hMarcas=hs.find(x=>_normTxt(x)==='marcas');
+  if(!hMarcas||!hs.includes(map.marca_art)) return map;
+  const out=Object.assign({}, map, {marca_art:hMarcas});
+  if(!map.marca_apl || !hs.includes(map.marca_apl)) out.marca_apl=map.marca_art;
+  out._nota=`En la hoja ${hoja.nombre}: ${hMarcas} = fábrica y ${map.marca_art} = marca del auto`;
+  return out;
 }
 
 // ¿es una hoja de ayuda de la planilla (_INSTRUCCIONES, _PLANTILLA…)? El `_` inicial la
@@ -2249,6 +2421,26 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const pendProv=new Map();    // nombre normalizado -> {valor, filas}
   plan.dudasProv=[]; plan.proveedoresPendientes=[];
   plan.sinMarca=[];            // refuerzo c: filas sin marca que esperan que Jere elija una
+  // F1.13: con opts.marcasDB la marca se resuelve contra la lista (nombre exacto → alias) y se guarda
+  // marca_id + el nombre OFICIAL en marca_articulo. Lo que no resuelve se pregunta y no entra hasta
+  // contestarse. Sin opts.marcasDB, todo como antes (texto libre).
+  //   opts.decisiones.marcas[valorNorm] = {marcaId, marcaNombre}  (Jere la creó o dijo "es alias de…")
+  //   opts.decisiones.auto[hoja+'\0'+valorNorm] = 'original' | 'auto'   (una vez por valor y por hoja)
+  //   opts.decisiones.original[hoja] = 'FIAT ORIGINAL'               ("ORIGINAL" solo, por hoja)
+  const usaMarcas=Array.isArray(opts.marcasDB);
+  const marcasDB=opts.marcasDB||[], aliasMarcas=opts.aliasMarcasDB||[];
+  const decM=(opts.decisiones&&opts.decisiones.marcas)||{};
+  const decAuto=(opts.decisiones&&opts.decisiones.auto)||{};
+  const decOrig=(opts.decisiones&&opts.decisiones.original)||{};
+  const pendMarca=new Map(), pregAuto=new Map(), pregOrig=new Map();
+  plan.marcasPendientes=[]; plan.preguntasAuto=[]; plan.preguntasOriginal=[]; plan.notas=[];
+  // texto → {marcaId, marcaNombre} | null (null = hay que preguntar)
+  const resolverM=txt=>{
+    const c=_catClasificarMarca(txt, marcasDB, aliasMarcas);
+    if(c.tipo==='ok') return c;
+    const d=decM[_normTxt(txt)]; if(d) return {tipo:'ok', marcaId:d.marcaId, marcaNombre:d.marcaNombre};
+    return c;
+  };
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código+marca)
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
@@ -2264,8 +2456,10 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const pendMap=new Map();     // valor normalizado -> {valor, filas}: lo que no resolvió
 
   (hojas||[]).forEach(h=>{
+    const mh=_catMapaHoja(map, h);   // F1.13: MARCA/MARCAS en la misma hoja
+    if(mh._nota && !plan.notas.includes(mh._nota)) plan.notas.push(mh._nota);
     (h.rows||[]).forEach(r=>{
-      const get=k=>fijos[k]!==undefined?fijos[k]:(map[k]?String(r[map[k]]==null?'':r[map[k]]).trim():'');
+      const get=k=>fijos[k]!==undefined?fijos[k]:(mh[k]?String(r[mh[k]]==null?'':r[mh[k]]).trim():'');
       // cadena del rubro de ESTA fila: valor de la columna → diccionario ya resuelto;
       // celda vacía → rubro de la hoja (una planilla mixta sigue andando);
       // no resuelve → PENDIENTE, y la fila no se importa ni aparece en el preview.
@@ -2288,12 +2482,53 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       let descripcion=descBase;
       if(!sep && aplicTxt) descripcion=(descBase?descBase+' — ':'')+aplicTxt;   // append SIEMPRE desde la planilla (idempotente)
       let marca_art=get('marca_art');
+      let marcaId=null, aplDesdeMarca=null;
+      // F1.13: la marca de la columna se resuelve contra la lista. Si hay que preguntar, la fila espera.
+      if(usaMarcas && marca_art && codigo){
+        let txt=marca_art, c=resolverM(txt);
+        if(c.tipo==='auto'){
+          const hk=h.nombre+'\u0000'+_normTxt(txt), d=decAuto[hk];
+          if(d==='auto'){ aplDesdeMarca=txt; txt=''; c=null; }          // era el auto: va a Marca del auto
+          else if(d==='original'){                                       // repuesto original de ese auto
+            const ali=_catResolverMarca(txt, marcasDB, aliasMarcas);
+            txt=ali?ali.marcaNombre:(String(marca_art).toUpperCase()+' ORIGINAL');
+            c=resolverM(txt); if(c.tipo==='auto') c={tipo:'pendiente'};
+          }else{
+            const p=pregAuto.get(hk);
+            if(p) p.filas++; else pregAuto.set(hk,{clave:hk, hoja:h.nombre, valor:marca_art, filas:1});
+            return;
+          }
+        }
+        if(c && c.tipo==='original'){
+          const d=decOrig[h.nombre];
+          if(d){ txt=d; c=resolverM(txt); if(c.tipo==='auto'||c.tipo==='original') c={tipo:'pendiente'}; }
+          else{
+            const ma=get('marca_apl'); let p=pregOrig.get(h.nombre);
+            if(!p){ p={hoja:h.nombre, filas:0, autos:{}}; pregOrig.set(h.nombre,p); }
+            p.filas++; if(ma) p.autos[ma.toUpperCase()]=(p.autos[ma.toUpperCase()]||0)+1;
+            return;
+          }
+        }
+        if(c && c.tipo==='pendiente'){
+          const k=_normTxt(txt), p=pendMarca.get(k);
+          if(p) p.filas++; else pendMarca.set(k,{valor:txt, norm:k, filas:1});
+          return;
+        }
+        if(c){ marca_art=c.marcaNombre; marcaId=c.marcaId; } else marca_art='';
+      }
       // refuerzo c (11/10): sin marca no se entra (la marca es parte de la identidad desde F1.1).
       // La UI prende opts.marcaObligatoria; si Jere eligió una marca para todas las filas vacías
       // (opts.decisiones.marcaVacias, ej. DESPIECE o IMPORTADO), se usa esa.
       if(!marca_art && codigo){
         const mv=opts.decisiones&&opts.decisiones.marcaVacias;
-        if(mv) marca_art=String(mv).trim();
+        if(mv){
+          marca_art=String(mv).trim();
+          if(usaMarcas){
+            const c=resolverM(marca_art);
+            if(c.tipo!=='ok'){ const k=_normTxt(marca_art), p=pendMarca.get(k); if(p) p.filas++; else pendMarca.set(k,{valor:marca_art, norm:k, filas:1}); return; }
+            marca_art=c.marcaNombre; marcaId=c.marcaId;
+          }
+        }
         else if(opts.marcaObligatoria){ plan.sinMarca.push({hoja:h.nombre, codigo, desc:descBase}); return; }
       }
       const codigo_barra=get('codigo_barra');
@@ -2362,6 +2597,8 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             // el artículo no tenía proveedor principal → toma el del archivo. Si tenía OTRO y Jere dijo
             // "es la misma", el principal NO se cambia (el código de este proveedor va por F1.3a).
             if(provId && !existente.proveedor_principal_id){ payload.proveedor_principal_id=provId; antes.proveedor_principal_id=null; }
+            // F1.13: el artículo queda atado a la marca de la lista
+            if(usaMarcas && marcaId && existente.marca_id!==marcaId){ payload.marca_id=marcaId; antes.marca_id=existente.marca_id==null?null:existente.marca_id; }
             if(esRevive){ payload.deleted_at=null; antes.deleted_at=existente.deleted_at; }   // revivir; deshacer vuelve a soft-deletear
             plan.articulos.update.push({id:existente.id, codigo, marca_art, payload, antes, reviv:esRevive});
           }else{
@@ -2369,6 +2606,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             estado='nuevo';
             const pl={codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true};
             if(provId) pl.proveedor_principal_id=provId;
+            if(usaMarcas && marcaId) pl.marca_id=marcaId;
             plan.articulos.insert.push({codigo, marca_art, payload:pl});
           }
         }
@@ -2381,7 +2619,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             pr.noParseados.forEach(s=>plan.noParseados.push({hoja:h.nombre, codigo, segmento:s}));
           }
         }else{
-          const ma=get('marca_apl');
+          const ma=get('marca_apl')||aplDesdeMarca;
           if(ma) apps=[{marca:ma, modelo:get('modelo')||null, motor:get('motor')||null, anio_desde:null, anio_hasta:null}];
         }
         apps.forEach(ap=>{
@@ -2416,8 +2654,15 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   pendMap.forEach(p=>plan.rubrosPendientes.push({valor:p.valor, filas:p.filas}));
   dudasCod.forEach(d=>plan.dudasCodigo.push(d));
   dudasProv.forEach(d=>plan.dudasProv.push(d));
+  pendMarca.forEach(p=>plan.marcasPendientes.push(p));
+  pregAuto.forEach(p=>plan.preguntasAuto.push(p));
+  // "ORIGINAL": sugerencia = el auto más repetido en Marca del auto de esas filas + " ORIGINAL"
+  pregOrig.forEach(p=>{
+    const top=Object.entries(p.autos).sort((a,b)=>b[1]-a[1])[0];
+    plan.preguntasOriginal.push({hoja:p.hoja, filas:p.filas, sugerido:top?top[0]+' ORIGINAL':''});
+  });
   pendProv.forEach(p=>plan.proveedoresPendientes.push({valor:p.valor, filas:p.filas}));
-  plan.resumen={ sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  plan.resumen={ marcasPend:plan.marcasPendientes.length+plan.preguntasAuto.length+plan.preguntasOriginal.length, sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -2775,9 +3020,11 @@ async function catPrevisualizar(){
   // SOLO de los códigos presentes en el archivo. Ambas consultas paginan con _sbSelectAll: sin esto,
   // el tope de 1000 de Supabase truncaría la lista y, al reimportar, los códigos fuera de esa ventana
   // saldrían como "nuevos" en vez de "a actualizar".
-  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,rubro_id,proveedor_principal_id,deleted_at'));
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,marca_id,rubro_id,proveedor_principal_id,deleted_at'));
   if(error){toast('Error cargando artículos',true);return;}
   const {data:provs}=await _sb.from('proveedores').select('id,nombre').is('deleted_at',null);
+  await cargarMarcas();   // F1.13: la lista de fábricas fresca (alguien pudo crear una en la pestaña Marcas)
+  if(!marcasDB.length){toast('No se pudo cargar la lista de fábricas (Marcas): sin ella no se puede importar',true);return;}
   const codesFile=new Set();
   _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=_catNormCodigo(r[map.codigo]); if(c) codesFile.add(c); }));
   const idsExist=arts.filter(a=>codesFile.has(_catNormCodigo(a.codigo_articulo))).map(a=>a.id);
@@ -2787,7 +3034,7 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[]}};
+  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[], marcasDB, aliasMarcasDB}};
   _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
 }
@@ -2803,6 +3050,37 @@ function catDecidirCodigo(i, val){
   const d=_catPlan&&_catPlan.dudasCodigo[i]; if(!d) return;
   _catDecisiones.codigo[d.clave]=val;
   _catReplanificar();
+}
+// F1.13: preguntas de marca en el preview. Las respuestas viven en _catDecisiones y se recalcula el plan.
+function _catDecM(){ ['marcas','auto','original'].forEach(k=>{ if(!_catDecisiones[k]) _catDecisiones[k]={}; }); return _catDecisiones; }
+// valor desconocido → es una fábrica que ya existe (y opcionalmente queda guardado como alias)
+async function catMarcaAsignar(i, marcaId, guardarAlias){
+  const p=_catPlan&&_catPlan.marcasPendientes[i]; if(!p||!marcaId) return;
+  const m=marcasDB.find(x=>x.id===marcaId); if(!m) return;
+  if(guardarAlias){
+    const {error}=await _sb.from('alias_marcas').insert([{alias_texto:p.norm, marca_id:marcaId}]);
+    if(error) toast('No se pudo guardar el alias: '+error.message,true); else { await cargarMarcas(); toast(`Alias guardado: "${p.valor}" → ${m.nombre}`); }
+  }
+  _catDecM().marcas[p.norm]={marcaId:m.id, marcaNombre:m.nombre};
+  _catReplanificar();
+}
+// valor desconocido → crear la fábrica (sólo desde el botón: el importador nunca crea una sola)
+async function catMarcaCrear(i){
+  const p=_catPlan&&_catPlan.marcasPendientes[i]; if(!p) return;
+  const inp=document.getElementById('cat-marca-nueva-'+i);
+  const r=await crearMarca(inp?inp.value:p.valor); if(!r) return;
+  _catDecM().marcas[p.norm]={marcaId:r.marcaId, marcaNombre:r.marcaNombre};
+  _catReplanificar();
+}
+function catDecidirAuto(i, val){
+  const p=_catPlan&&_catPlan.preguntasAuto[i]; if(!p) return;
+  _catDecM().auto[p.clave]=val; _catReplanificar();
+}
+function catDecidirOriginal(i){
+  const p=_catPlan&&_catPlan.preguntasOriginal[i]; if(!p) return;
+  const v=(document.getElementById('cat-orig-'+i)||{}).value||'';
+  if(!v.trim()){toast('Elegí de qué fábrica es el original',true);return;}
+  _catDecM().original[p.hoja]=v.trim(); _catReplanificar();
 }
 // refuerzo c: marca para todas las filas que vinieron sin marca ('' = volver a dejarlas afuera)
 function catMarcaParaVacias(val){
@@ -2826,6 +3104,32 @@ async function _catCargarDatalistProv(){
 function _catPreguntasHtml(plan){
   const sec=[];
   const btn=(fn,i,val,txt,cls)=>`<button class="btn sm ${cls||''}" onclick="${fn}(${i},'${val}')">${txt}</button>`;
+  const mg=()=>sec.length?'10px':'0';
+  // F1.13 — marcas (van primero: son las que más filas traban)
+  (plan.notas||[]).forEach(n=>sec.push(`<div style="font-size:11px;color:var(--info);margin:${mg()} 0 4px"><i class="ti ti-info-circle"></i> ${_escAttr(n)}</div>`));
+  if(plan.preguntasAuto&&plan.preguntasAuto.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin:${mg()} 0 6px"><i class="ti ti-car"></i> Marcas de auto en la columna de la fábrica — ¿qué son?</div>`+
+      plan.preguntasAuto.map((p,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span><b>${_escAttr(p.valor)}</b> <span style="color:var(--text3)">· hoja ${_escAttr(p.hoja)} · ${p.filas} fila${p.filas===1?'':'s'}</span></span>
+        ${btn('catDecidirAuto',i,'original','Repuesto original')} ${btn('catDecidirAuto',i,'auto','Es la marca del auto')}</div>`).join(''));
+  }
+  if(plan.preguntasOriginal&&plan.preguntasOriginal.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin:${mg()} 0 6px"><i class="ti ti-help-circle"></i> Dice "ORIGINAL" solo — ¿original de qué auto?</div>`+
+      plan.preguntasOriginal.map((p,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span>hoja <b>${_escAttr(p.hoja)}</b> <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span></span>
+        <input id="cat-orig-${i}" list="dl-marcas" autocomplete="off" value="${_escAttr(p.sugerido)}" placeholder="ej. FIAT ORIGINAL" style="max-width:200px">
+        <button class="btn sm" onclick="catDecidirOriginal(${i})">Usar</button></div>`).join(''));
+  }
+  if(plan.marcasPendientes&&plan.marcasPendientes.length){
+    const mopts=marcasDB.map(m=>`<option value="${m.id}">${_escAttr(m.nombre)}</option>`).join('');
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--danger);margin:${mg()} 0 6px"><i class="ti ti-tag"></i> Fábricas que no están en la lista — no entran hasta resolverlas (${plan.marcasPendientes.length})</div>`+
+      plan.marcasPendientes.map((p,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span style="min-width:140px"><b>${_escAttr(p.valor)}</b> <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span></span>
+        <select style="max-width:180px" onchange="catMarcaAsignar(${i},this.value,document.getElementById('cat-marca-alias-${i}').checked)"><option value="">— es una que ya existe —</option>${mopts}</select>
+        <label style="font-size:11px;color:var(--text2);display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" class="chk" id="cat-marca-alias-${i}" checked> guardar como alias</label>
+        <input id="cat-marca-nueva-${i}" value="${_escAttr(String(p.valor).toUpperCase())}" style="max-width:150px">
+        <button class="btn sm" onclick="catMarcaCrear(${i})"><i class="ti ti-plus"></i> Crear fábrica</button></div>`).join(''));
+  }
   if(plan.dudasCodigo&&plan.dudasCodigo.length){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin-bottom:6px"><i class="ti ti-help-circle"></i> Códigos escritos distinto con la misma marca — ¿son la misma pieza? (${plan.dudasCodigo.length})</div>`+
       plan.dudasCodigo.map((d,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
@@ -2844,7 +3148,7 @@ function _catPreguntasHtml(plan){
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px">Usar para todas:
         <button class="btn sm" onclick="catMarcaParaVacias('DESPIECE')">DESPIECE</button>
         <button class="btn sm" onclick="catMarcaParaVacias('IMPORTADO')">IMPORTADO</button>
-        <input id="cat-marca-vacias" placeholder="otra marca…" style="max-width:160px">
+        <input id="cat-marca-vacias" list="dl-marcas" autocomplete="off" placeholder="otra fábrica…" style="max-width:160px">
         <button class="btn sm" onclick="catMarcaParaVacias(document.getElementById('cat-marca-vacias').value)">Usar</button></div>`);
   }else if(_catDecisiones.marcaVacias){
     sec.push(`<div style="font-size:12px;color:var(--text2);margin:${sec.length?'10px':'0'} 0 0"><i class="ti ti-tag"></i> Las filas sin marca entran como <b>${_escAttr(_catDecisiones.marcaVacias)}</b> <button class="btn sm" onclick="catMarcaParaVacias('')">deshacer</button></div>`);
@@ -2862,7 +3166,8 @@ function _catPreguntasHtml(plan){
 }
 // ¿quedan preguntas sin contestar? (mientras haya, no se aplica nada)
 function _catDudasPendientes(plan){
-  return plan?((plan.dudasCodigo||[]).length+(plan.dudasProv||[]).length):0;
+  return plan?((plan.dudasCodigo||[]).length+(plan.dudasProv||[]).length
+    +(plan.marcasPendientes||[]).length+(plan.preguntasAuto||[]).length+(plan.preguntasOriginal||[]).length):0;
 }
 
 // --- virtualización del cuerpo del preview (windowing propio, sin librerías) ---
@@ -2942,7 +3247,7 @@ function catRenderPreview(){
   }
 
   const cols=`<div style="position:sticky;top:0;z-index:2;background:var(--bg2);border-bottom:1px solid var(--border);height:${_CAT_COLSH}px;${_CAT_GRID};padding:0 6px;font-size:10px;font-weight:700;letter-spacing:.04em;color:var(--text3);text-transform:uppercase">
-    <div>Código</div><div>Descripción</div><div>Marca</div><div>Aplicación</div><div>Stock</div><div>Estado</div></div>`;
+    <div>Código</div><div>Descripción</div><div>Fábrica</div><div>Aplicación</div><div>Stock</div><div>Estado</div></div>`;
   document.getElementById('cat-preview-body').innerHTML=
     `<div id="cat-preview-scroll" style="max-height:460px;overflow-y:auto;overflow-x:hidden;position:relative;border:1px solid var(--border);border-radius:var(--r)">${cols}<div id="cat-preview-spacer" style="position:relative;height:${items.length*_CAT_ROWH}px"></div></div>${extra}`;
 
@@ -3385,6 +3690,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   cargarTema();
   cargarConfig().catch(e=>console.warn('cargarConfig:',e)); // async, carga desde Supabase
   cargarRubrosSelect(); // async, carga desde Supabase
+  cargarMarcas();       // F1.13: lista de fábricas + alias (async)
 
   // nav
   document.querySelectorAll('.ni[data-page]').forEach(n=>n.addEventListener('click',()=>goTo(n.getAttribute('data-page'))));
@@ -3437,12 +3743,13 @@ window.addEventListener('DOMContentLoaded',()=>{
   document.querySelectorAll('.tab[data-admin]').forEach(t=>t.addEventListener('click',()=>{
     document.querySelectorAll('.tab[data-admin]').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
-    ['art','cli','ven','rubros','imp','cat','gest','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
+    ['art','cli','ven','rubros','marcas','imp','cat','gest','seg'].forEach(p=>document.getElementById('admin-'+p+'-panel').style.display='none');
     document.getElementById('admin-'+t.getAttribute('data-admin')+'-panel').style.display='block';
     if(t.getAttribute('data-admin')==='art') renderAdminArt();
     if(t.getAttribute('data-admin')==='cli') renderAdminCli();
     if(t.getAttribute('data-admin')==='ven') renderAdminVen();
     if(t.getAttribute('data-admin')==='rubros') renderAdminRubros();
+    if(t.getAttribute('data-admin')==='marcas') cargarMarcas().then(renderAdminMarcas);
     if(t.getAttribute('data-admin')==='imp') initImport();
     if(t.getAttribute('data-admin')==='cat') initImportCat();
     if(t.getAttribute('data-admin')==='gest') initGestion();

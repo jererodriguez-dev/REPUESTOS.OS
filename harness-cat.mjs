@@ -18,12 +18,12 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
 const { _catPartirNumerado, _catDetectarPares, _catParesDeFila, _catAutodetect, _catParseAplic, _catResolverRubro, _catHojaIgnorada, _catVWindow, _catPlanImport,
-        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro, _catClaveArt, _catNormCodigo } = core;
+        _catBuildOperaciones, _catBuildLimpieza, _catPlanDeshacer, _catPuedeDeshacer, _catContarPorRubro, _catClaveArt, _catNormCodigo, _catResolverMarca, _catClasificarMarca, _catMapaHoja } = core;
 
 // --- mini framework de asserts ----------------------------------------------
 let pass = 0, fail = 0;
@@ -1078,6 +1078,107 @@ head('F1.1-c — fila sin marca no entra; se elige una para todas');
   const sinCod = _catPlanImport(hoja11([fila11('','',1)]), map11, { marcaObligatoria:true }, [], []);
   eq(sinCod.resumen.err + sinCod.sinMarca.length, 1, 'fila sin código ni marca → error de código, una sola vez');
   eq(sinCod.resumen.err, 1, '… cuenta como error (falta código), no como "sin marca"');
+}
+
+// ===========================================================================
+// F1.13 — MARCAS PRECARGADAS (lista + alias, como rubros)
+// ===========================================================================
+const MDB = [ { id:'m-fremax', nombre:'FREMAX' }, { id:'m-trw', nombre:'TRW' }, { id:'m-gm', nombre:'GM' },
+              { id:'m-ren', nombre:'RENAULT ORIGINAL' }, { id:'m-desp', nombre:'DESPIECE' }, { id:'m-imp', nombre:'IMPORTADO' },
+              { id:'m-fiat', nombre:'FIAT ORIGINAL' }, { id:'m-rg', nombre:'REY GOMA' } ];
+const ALI = [ { alias_texto:'freemax', marca_id:'m-fremax' }, { alias_texto:'renault', marca_id:'m-ren' }, { alias_texto:'suelto', marca_id:'m-desp' } ];
+const optM = extra => Object.assign({ marcaObligatoria:true, marcasDB:MDB, aliasMarcasDB:ALI }, extra||{});
+
+head('F1.13 — resolver y clasificar');
+{
+  eq((_catResolverMarca(' trw ', MDB, ALI)||{}).marcaNombre, 'TRW', 'nombre exacto (normalizado)');
+  eq((_catResolverMarca('FREEMAX', MDB, ALI)||{}).marcaNombre, 'FREMAX', 'por alias: FREEMAX → FREMAX');
+  eq(_catResolverMarca('NO EXISTE', MDB, ALI), null, 'desconocida → null');
+  eq(_catResolverMarca('X', MDB, [{ alias_texto:'x', marca_id:'borrada' }]), null, 'alias que apunta a una marca dada de baja → no resuelve');
+  eq(_catClasificarMarca('GM', MDB, ALI).tipo, 'ok', 'GM es marca de la lista (el nombre exacto gana)');
+  eq(_catClasificarMarca('FIAT', MDB, ALI).tipo, 'auto', 'FIAT → marca de auto');
+  eq(_catClasificarMarca('Renault', MDB, ALI).tipo, 'auto', 'RENAULT pregunta aunque tenga alias');
+  eq(_catClasificarMarca('original', MDB, ALI).tipo, 'original', '"ORIGINAL" solo');
+  eq(_catClasificarMarca('ZZZ', MDB, ALI).tipo, 'pendiente', 'desconocida → pendiente');
+}
+
+head('F1.13 — el importador guarda marca_id y el nombre OFICIAL');
+{
+  const p = _catPlanImport(hoja11([ fila11('F-1','freemax',1), fila11('F-2','Trw',1) ]), map11, optM(), [], []);
+  eq(p.resumen.nuevos, 2, '2 altas');
+  eq(p.articulos.insert[0].payload.marca_articulo + '/' + p.articulos.insert[0].payload.marca_id, 'FREMAX/m-fremax', 'FREEMAX entra como FREMAX con su id');
+  eq(p.articulos.insert[1].payload.marca_articulo, 'TRW', '"Trw" entra como TRW');
+  const db = [{ id:5, codigo_articulo:'F-1', marca_articulo:'FREMAX', marca_id:null, descripcion:'x', deleted_at:null }];
+  const u = _catPlanImport(hoja11([ fila11('F-1','FREEMAX',1) ]), map11, optM(), db, []);
+  eq(u.resumen.upd, 1, 'FREEMAX en el archivo encuentra el FREMAX de la base (no duplica)');
+  eq(u.articulos.update[0].payload.marca_id, 'm-fremax', 'el update ata el artículo a la marca');
+  eq(u.articulos.update[0].antes.marca_id, null, '… con snapshot para Deshacer');
+}
+
+head('F1.13 — marca desconocida: se pregunta y no entra hasta resolver');
+{
+  const rows = [ fila11('D-1','MARCA NUEVA',1), fila11('D-2','marca nueva',1), fila11('D-3','TRW',1) ];
+  const p = _catPlanImport(hoja11(rows), map11, optM(), [], []);
+  eq(p.marcasPendientes.length, 1, 'una marca pendiente (agrupa mayúsculas)');
+  eq(p.marcasPendientes[0].filas, 2, '… con 2 filas');
+  eq(p.resumen.nuevos, 1, 'entra sólo la TRW');
+  const r = _catPlanImport(hoja11(rows), map11, optM({ decisiones:{ marcas:{ 'marca nueva':{ marcaId:'m-new', marcaNombre:'MARCA NUEVA' } } } }), [], []);
+  eq(r.marcasPendientes.length, 0, 'resuelta (creada o alias) → no queda pendiente');
+  eq(r.resumen.nuevos, 3, '… y entran las 3');
+}
+
+head('F1.13 — "ORIGINAL" solo: se pregunta por hoja y se sugiere <AUTO> ORIGINAL');
+{
+  const rows = [ fila11('O-1','ORIGINAL',1,'FIAT','UNO'), fila11('O-2','original',1,'FIAT','PALIO'), fila11('O-3','ORIGINAL',1,'FORD','KA') ];
+  const p = _catPlanImport(hoja11(rows), map11, optM(), [], []);
+  eq(p.preguntasOriginal.length, 1, 'una pregunta por hoja');
+  eq(p.preguntasOriginal[0].sugerido, 'FIAT ORIGINAL', 'sugiere el auto más repetido');
+  eq(p.resumen.nuevos, 0, 'mientras tanto no entra nada de eso');
+  const r = _catPlanImport(hoja11(rows), map11, optM({ decisiones:{ original:{ RULEMANES:'FIAT ORIGINAL' } } }), [], []);
+  eq(r.resumen.nuevos, 3, 'contestado → entran');
+  eq(r.articulos.insert[0].payload.marca_id, 'm-fiat', '… atadas a FIAT ORIGINAL');
+}
+
+head('F1.13 — marca de auto en la columna de la fábrica: una vez por valor y por hoja');
+{
+  const rows = [ fila11('A-1','FIAT',1), fila11('A-2','fiat',1) ];
+  const hojas = [ { nombre:'H1', rubroId:'r', rubroNombre:'R', rows }, { nombre:'H2', rubroId:'r', rubroNombre:'R', rows:[ fila11('A-3','FIAT',1) ] } ];
+  const p = _catPlanImport(hojas, map11, optM(), [], []);
+  eq(p.preguntasAuto.length, 2, 'FIAT en dos hojas → dos preguntas (una por hoja)');
+  eq(p.preguntasAuto[0].filas, 2, 'la de H1 agrupa sus 2 filas');
+  const k1 = p.preguntasAuto[0].clave, k2 = p.preguntasAuto[1].clave;
+  const r = _catPlanImport(hojas, map11, optM({ decisiones:{ auto:{ [k1]:'original', [k2]:'auto' }, marcaVacias:'DESPIECE' } }), [], []);
+  eq(r.articulos.insert.filter(x => x.payload.marca_articulo === 'FIAT ORIGINAL').length, 2, 'H1 "original" → FIAT ORIGINAL');
+  const a3 = r.articulos.insert.find(x => x.codigo === 'A-3');
+  eq(a3 && a3.payload.marca_articulo, 'DESPIECE', 'H2 "es el auto" → queda sin fábrica y toma la elegida para vacías');
+  eq(r.aplicaciones.insert.filter(a => a.codigo === 'A-3' && a.marca === 'FIAT').length, 1, '… y FIAT pasa a Marca del auto (aplicación)');
+  const sinElegir = _catPlanImport(hojas, map11, optM({ decisiones:{ auto:{ [k1]:'original', [k2]:'auto' } } }), [], []);
+  eq(sinElegir.sinMarca.length, 1, 'sin marca para vacías, la de H2 queda en "sin marca"');
+  const ren = _catPlanImport(hoja11([fila11('R-1','RENAULT',1)]), map11, optM({ decisiones:{ auto:{ ['RULEMANES\u0000renault']:'original' } } }), [], []);
+  eq(ren.articulos.insert[0].payload.marca_articulo, 'RENAULT ORIGINAL', '"original" usa el alias si existe (renault → RENAULT ORIGINAL)');
+}
+
+head('F1.13 — hoja con MARCA (auto) y MARCAS (fábrica), como SOPORTES DE MOTOR V2');
+{
+  const hS = { nombre:'SOPORTES DE MOTOR V2', rubroId:'r-sop', rubroNombre:'SOPORTES', headers:['CODIGO','DESCRIPCION','MARCA','MARCAS','MODELO'],
+    rows:[ { CODIGO:'S-1', DESCRIPCION:'Soporte', MARCA:'FORD', MARCAS:'REY GOMA', MODELO:'KA' } ] };
+  const hO = { nombre:'RULEMANES', rubroId:'r-rlm', rubroNombre:'RULEMANES', headers:['CODIGO','DESCRIPCION','MARCA'],
+    rows:[ { CODIGO:'R-1', DESCRIPCION:'Ruleman', MARCA:'TRW' } ] };
+  const map = _catAutodetect(['CODIGO','DESCRIPCION','MARCA','MARCAS','MODELO']);
+  eq(map.marca_art, 'MARCA', 'el mapeo general toma MARCA como fábrica');
+  const p = _catPlanImport([hS, hO], map, optM(), [], []);
+  eq(p.articulos.insert.find(x => x.codigo === 'S-1').payload.marca_articulo, 'REY GOMA', 'en SOPORTES la fábrica sale de MARCAS');
+  eq(p.aplicaciones.insert.filter(a => a.codigo === 'S-1' && a.marca === 'FORD' && a.modelo === 'KA').length, 1, '… y MARCA (FORD) va a Marca del auto');
+  eq(p.articulos.insert.find(x => x.codigo === 'R-1').payload.marca_articulo, 'TRW', 'en las otras hojas MARCA sigue siendo la fábrica');
+  eq(p.notas.length, 1, 'el preview avisa el cambio con una nota');
+  eq(p.preguntasAuto.length, 0, 'FORD no se pregunta: está en la columna del auto');
+}
+
+head('F1.13 — sin lista de marcas (opts.marcasDB ausente) todo sigue como antes');
+{
+  const p = _catPlanImport(hoja11([fila11('T-1','marca cualquiera',1)]), map11, {}, [], []);
+  eq(p.articulos.insert[0].payload.marca_articulo, 'marca cualquiera', 'texto libre');
+  ok(!('marca_id' in p.articulos.insert[0].payload), 'sin marca_id');
 }
 
 // --- resumen final -----------------------------------------------------------
