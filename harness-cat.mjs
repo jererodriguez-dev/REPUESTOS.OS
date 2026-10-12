@@ -18,7 +18,7 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO,_catColsOem,_catHijosDeFila};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
@@ -1231,6 +1231,24 @@ head('F1.3 — deshacer borra las filas hijas creadas y restaura las actualizada
   eq(d.restoreHijos[0].set.valor, '17', 'y restaura el valor anterior de la medida');
   ok(_catPuedeDeshacer({ tipo:'CATALOGO', operaciones:{ altas_hijos:{ oems:[1] } } }) === true, 'una importación que sólo cargó hijos se puede deshacer');
   eq(_catBuildOperaciones([1],[],[]).altas_hijos, undefined, 'sin hijos, el snapshot es el de siempre');
+}
+
+// ===========================================================================
+// F1.3c — ENCHUFE oems (OEM 1-3, códigos sueltos, sin par)
+// ===========================================================================
+head('F1.3c — OEM');
+{
+  eq(core._catColsOem(['Codigo','OEM 2','oem 1','OEM 3','Nombre equivalencia 1','OEMX']).join(','), 'oem 1,OEM 2,OEM 3', 'detecta OEM 1-3 en orden, ignora lo demás');
+  const H = ['Codigo','Descripcion','Marca articulo','OEM 1','OEM 2','OEM 3'];
+  const hoja = rows => [{ nombre:'MAESTRA', rubroId:'r', rubroNombre:'R', headers:H, rows }];
+  const row = (c, o1, o2, o3) => ({ 'Codigo':c, 'Descripcion':'D', 'Marca articulo':'SKF', 'OEM 1':o1||'', 'OEM 2':o2||'', 'OEM 3':o3||'' });
+  const p = _catPlanImport(hoja([ row('A','4434587','','46 40 1234'), row('A','4434587') ]), _catAutodetect(H), {}, [], []);
+  eq(p.hijos.oems.insert.map(x => x.row.oem).join('|'), '4434587|46 40 1234', 'dos OEM (el vacío del medio no cuenta; el repetido tampoco)');
+  ok(!('marca_oem' in p.hijos.oems.insert[0].row), 'marca_oem no se inventa');
+  const db = { oems:[ { id:5, id_articulo:1, oem:'4434587' } ] };
+  const r = _catPlanImport(hoja([ row('A','4434-587','X9') ]), _catAutodetect(H), { dbHijos:db }, [ { id:1, codigo_articulo:'A', marca_articulo:'SKF', descripcion:'x' } ], []);
+  eq(r.hijos.oems.insert.map(x => x.row.oem).join('|'), 'X9', 'reimportar: el OEM que ya estaba (aunque venga con guion) no se duplica');
+  eq(r.hijos.oems.insert[0].idArt, 1, 'el OEM nuevo del artículo existente ya trae su id');
 }
 
 // --- resumen final -----------------------------------------------------------

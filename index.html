@@ -2395,8 +2395,15 @@ function _catParesDeFila(fila, detectados, destino, ctx){
 // =====================================================================
 const CAT_ENCHUFES={
   codigos_proveedor:{ k:it=>it.proveedor_id+'\u0000'+_catNormCodigo(it.codigo_proveedor), upd:null },
+  oems:             { k:it=>_catNormCodigo(it.oem), upd:null },
 };
-const CAT_ENCHUFADOS=['codigos_proveedor'];
+const CAT_ENCHUFADOS=['codigos_proveedor','oems'];
+
+// F1.3c — columnas OEM: no son pares, son códigos sueltos ("OEM 1", "OEM 2", "OEM"). Ordenadas por número.
+function _catColsOem(headers){
+  return (headers||[]).map(h=>({h, m:_normTxt(h).match(/^oem\s*(\d*)$/)})).filter(o=>o.m)
+    .sort((a,b)=>(parseInt(a.m[1]||'0',10))-(parseInt(b.m[1]||'0',10))).map(o=>o.h);
+}
 
 // los hijos de UNA fila, ya resueltos. Devuelve {items:{tabla:[row]}, warnings, provPend:[nombre]}.
 //   det: _catDetectarPares de los headers de la hoja · provsDB: [{id,nombre}]
@@ -2413,6 +2420,10 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
       if(!pv){ if(!provPend.includes(p.nombre)) provPend.push(p.nombre); return; }
       items.codigos_proveedor.push({proveedor_id:pv.id, codigo_proveedor:p.valor});
     });
+  }
+  if(on('oems')){
+    // marca_oem queda vacía: la planilla no dice de qué marca es el OEM (no se adivina)
+    items.oems=((det&&det.oems)||[]).map(h=>String(fila&&fila[h]!=null?fila[h]:'').trim()).filter(Boolean).map(oem=>({oem}));
   }
   return {items, warnings, provPend};
 }
@@ -2504,7 +2515,9 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 
   (hojas||[]).forEach(h=>{
     const mh=_catMapaHoja(map, h);   // F1.13: MARCA/MARCAS en la misma hoja
-    const detH=_catDetectarPares((h&&h.headers)||((h&&h.rows&&h.rows[0])?Object.keys(h.rows[0]):[]));   // F1.3: pares de ESTA hoja
+    const hsH=(h&&h.headers)||((h&&h.rows&&h.rows[0])?Object.keys(h.rows[0]):[]);
+    const detH=_catDetectarPares(hsH);   // F1.3: pares de ESTA hoja
+    detH.oems=_catColsOem(hsH);          // F1.3c: columnas OEM sueltas
     if(mh._nota && !plan.notas.includes(mh._nota)) plan.notas.push(mh._nota);
     (h.rows||[]).forEach(r=>{
       const get=k=>fijos[k]!==undefined?fijos[k]:(mh[k]?String(r[mh[k]]==null?'':r[mh[k]]).trim():'');
