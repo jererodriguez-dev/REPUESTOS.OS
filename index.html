@@ -4103,6 +4103,12 @@ function mostrarApp(email){
   document.getElementById('sidebar-user').textContent=email;
   _adminUnlock=false;            // cada sesión arranca bloqueada
   cargarConfigSeguridad();       // precarga el PIN (async, sin bloquear)
+  // F4a (RLS): sin sesión la base no devuelve nada, así que lo que se cargó en
+  // DOMContentLoaded antes del login puede haber quedado vacío. Se recarga acá,
+  // ya logueado. Las tres funciones pisan su contenido (no duplican).
+  cargarConfig().catch(e=>console.warn('cargarConfig:',e));
+  cargarRubrosSelect();
+  cargarMarcas();
   renderDashboard();
 }
 
