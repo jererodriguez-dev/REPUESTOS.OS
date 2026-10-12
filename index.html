@@ -2396,8 +2396,9 @@ function _catParesDeFila(fila, detectados, destino, ctx){
 const CAT_ENCHUFES={
   codigos_proveedor:{ k:it=>it.proveedor_id+'\u0000'+_catNormCodigo(it.codigo_proveedor), upd:null },
   oems:             { k:it=>_catNormCodigo(it.oem), upd:null },
+  medidas:          { k:it=>_normTxt(it.nombre_medida), upd:'valor' },
 };
-const CAT_ENCHUFADOS=['codigos_proveedor','oems'];
+const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas'];
 
 // F1.3c — columnas OEM: no son pares, son códigos sueltos ("OEM 1", "OEM 2", "OEM"). Ordenadas por número.
 function _catColsOem(headers){
@@ -2420,6 +2421,13 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
       if(!pv){ if(!provPend.includes(p.nombre)) provPend.push(p.nombre); return; }
       items.codigos_proveedor.push({proveedor_id:pv.id, codigo_proveedor:p.valor});
     });
+  }
+  if(on('medidas')){
+    // F1.3d: una fila por medida. Si el artículo ya tiene esa medida con otro valor, se ACTUALIZA
+    // (la planilla manda, como con la descripción). base_id lo completa F1.8.
+    const r=_catParesDeFila(fila, det, 'medidas', ctx);
+    warnings.push(...r.warnings);
+    items.medidas=r.filas.map(p=>({nombre_medida:p.nombre, valor:p.valor}));
   }
   if(on('oems')){
     // marca_oem queda vacía: la planilla no dice de qué marca es el OEM (no se adivina)

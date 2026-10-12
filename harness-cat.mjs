@@ -1251,6 +1251,24 @@ head('F1.3c — OEM');
   eq(r.hijos.oems.insert[0].idArt, 1, 'el OEM nuevo del artículo existente ya trae su id');
 }
 
+// ===========================================================================
+// F1.3d — ENCHUFE medidas
+// ===========================================================================
+head('F1.3d — medidas');
+{
+  const H = ['Codigo','Descripcion','Marca articulo','Nombre medida 1','Medida 1','Nombre medida 2','Medida 2','Nombre medida 3','Medida 3'];
+  const hoja = rows => [{ nombre:'MAESTRA', rubroId:'r', rubroNombre:'R', headers:H, rows }];
+  const row = (c, ...m) => { const o = { 'Codigo':c, 'Descripcion':'D', 'Marca articulo':'SKF' }; [1,2,3].forEach((n,i) => { o['Nombre medida '+n] = m[i*2]||''; o['Medida '+n] = m[i*2+1]??''; }); return o; };
+  const p = _catPlanImport(hoja([ row('A','Interior',17,'Exterior',40,'Alto',12) ]), _catAutodetect(H), {}, [], []);
+  eq(p.hijos.medidas.insert.map(x => x.row.nombre_medida + '=' + x.row.valor).join(' '), 'Interior=17 Exterior=40 Alto=12', '3 medidas, el número entra como texto');
+  const db = { medidas:[ { id:70, id_articulo:1, nombre_medida:'interior', valor:'17' }, { id:71, id_articulo:1, nombre_medida:'Exterior', valor:'41' } ] };
+  const r = _catPlanImport(hoja([ row('A','Interior',17,'Exterior',40,'Alto',12) ]), _catAutodetect(H), { dbHijos:db }, [ { id:1, codigo_articulo:'A', marca_articulo:'SKF', descripcion:'x' } ], []);
+  eq(r.hijos.medidas.insert.map(x => x.row.nombre_medida).join(','), 'Alto', 'reimportar: sólo entra la medida que faltaba');
+  eq(r.hijos.medidas.update.length, 1, 'Exterior cambió de 41 a 40 → se actualiza');
+  eq(r.hijos.medidas.update[0].id + ':' + r.hijos.medidas.update[0].set.valor + '<-' + r.hijos.medidas.update[0].antes.valor, '71:40<-41', '… con su valor de antes para Deshacer');
+  eq(r.hijos.medidas.skip, 1, 'Interior igual → salteada');
+}
+
 // --- resumen final -----------------------------------------------------------
 console.log(`\n${C.b}RESUMEN:${C.x} ${C.g}${pass} OK${C.x}` + (fail ? `, ${C.r}${fail} FALLARON${C.x}` : '') + '\n');
 process.exit(fail ? 1 : 0);
