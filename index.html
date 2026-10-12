@@ -2248,6 +2248,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const dudasProv=new Map();   // clave -> {clave, codigo, marca, provArchivo, provBase, filas}
   const pendProv=new Map();    // nombre normalizado -> {valor, filas}
   plan.dudasProv=[]; plan.proveedoresPendientes=[];
+  plan.sinMarca=[];            // refuerzo c: filas sin marca que esperan que Jere elija una
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código+marca)
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
@@ -2286,7 +2287,15 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       const aplicTxt=get('aplic');
       let descripcion=descBase;
       if(!sep && aplicTxt) descripcion=(descBase?descBase+' — ':'')+aplicTxt;   // append SIEMPRE desde la planilla (idempotente)
-      const marca_art=get('marca_art');
+      let marca_art=get('marca_art');
+      // refuerzo c (11/10): sin marca no se entra (la marca es parte de la identidad desde F1.1).
+      // La UI prende opts.marcaObligatoria; si Jere eligió una marca para todas las filas vacías
+      // (opts.decisiones.marcaVacias, ej. DESPIECE o IMPORTADO), se usa esa.
+      if(!marca_art && codigo){
+        const mv=opts.decisiones&&opts.decisiones.marcaVacias;
+        if(mv) marca_art=String(mv).trim();
+        else if(opts.marcaObligatoria){ plan.sinMarca.push({hoja:h.nombre, codigo, desc:descBase}); return; }
+      }
       const codigo_barra=get('codigo_barra');
       const ubicacion=get('ubicacion');
       // proveedor de la fila (refuerzo b). Sin proveedor = como siempre.
@@ -2408,7 +2417,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   dudasCod.forEach(d=>plan.dudasCodigo.push(d));
   dudasProv.forEach(d=>plan.dudasProv.push(d));
   pendProv.forEach(p=>plan.proveedoresPendientes.push({valor:p.valor, filas:p.filas}));
-  plan.resumen={ dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  plan.resumen={ sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -2778,7 +2787,7 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catBase={map, arts, dbApl, opts:{separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[]}};
+  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[]}};
   _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
 }
@@ -2793,6 +2802,11 @@ function _catReplanificar(){
 function catDecidirCodigo(i, val){
   const d=_catPlan&&_catPlan.dudasCodigo[i]; if(!d) return;
   _catDecisiones.codigo[d.clave]=val;
+  _catReplanificar();
+}
+// refuerzo c: marca para todas las filas que vinieron sin marca ('' = volver a dejarlas afuera)
+function catMarcaParaVacias(val){
+  _catDecisiones.marcaVacias=String(val||'').trim();
   _catReplanificar();
 }
 // refuerzo b: respuesta a "¿es la misma pieza?" cuando el artículo ya existe con otro proveedor
@@ -2823,6 +2837,17 @@ function _catPreguntasHtml(plan){
       plan.dudasProv.map((d,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
         <span><b>${_escAttr(d.codigo)}</b> (${_escAttr(d.marca)||'sin marca'}) · en la base: <b>${_escAttr(d.provBase)}</b> · en el archivo: <b>${_escAttr(d.provArchivo)}</b> <span style="color:var(--text3)">· ${d.filas} fila${d.filas===1?'':'s'}</span></span>
         ${btn('catDecidirProv',i,'misma','Es la misma (actualiza)')} ${btn('catDecidirProv',i,'otra','Es otra (no entra)')}</div>`).join(''));
+  }
+  if(plan.sinMarca&&plan.sinMarca.length){
+    const ej=plan.sinMarca.slice(0,8).map(s=>_escAttr(s.codigo)).join(', ')+(plan.sinMarca.length>8?'…':'');
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--danger);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-tag-off"></i> ${plan.sinMarca.length} fila${plan.sinMarca.length===1?'':'s'} sin marca — no entran hasta elegirle una <span style="font-weight:400;color:var(--text3)">(${ej})</span></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px">Usar para todas:
+        <button class="btn sm" onclick="catMarcaParaVacias('DESPIECE')">DESPIECE</button>
+        <button class="btn sm" onclick="catMarcaParaVacias('IMPORTADO')">IMPORTADO</button>
+        <input id="cat-marca-vacias" placeholder="otra marca…" style="max-width:160px">
+        <button class="btn sm" onclick="catMarcaParaVacias(document.getElementById('cat-marca-vacias').value)">Usar</button></div>`);
+  }else if(_catDecisiones.marcaVacias){
+    sec.push(`<div style="font-size:12px;color:var(--text2);margin:${sec.length?'10px':'0'} 0 0"><i class="ti ti-tag"></i> Las filas sin marca entran como <b>${_escAttr(_catDecisiones.marcaVacias)}</b> <button class="btn sm" onclick="catMarcaParaVacias('')">deshacer</button></div>`);
   }
   if(plan.proveedoresPendientes&&plan.proveedoresPendientes.length){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--danger);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-truck"></i> Proveedores que no existen — esas filas no entran. Crealo en Proveedores (o corregí el nombre) y volvé a previsualizar:</div>
@@ -2928,6 +2953,7 @@ function catRenderPreview(){
 
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
+  if(R.sinMarca) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.sinMarca} sin marca</span>`;
   if(R.provPend) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.provPend} fila${R.provPend===1?'':'s'} sin proveedor conocido</span>`;
   const nDudas=_catDudasPendientes(plan);
   if(nDudas) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--accent)">${nDudas} pregunta${nDudas===1?'':'s'} sin contestar</span>`;

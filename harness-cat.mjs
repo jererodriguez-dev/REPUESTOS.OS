@@ -1057,6 +1057,29 @@ head('F1.1-b — proveedor que no existe: pendiente, no se crea solo');
   eq(p.resumen.provPend, 2, 'el resumen las cuenta');
 }
 
+// ===========================================================================
+// F1.1 refuerzo c — marca obligatoria al importar (la UI prende opts.marcaObligatoria)
+// ===========================================================================
+head('F1.1-c — fila sin marca no entra; se elige una para todas');
+{
+  const rows = [ fila11('S-1','',1,'FIAT','UNO'), fila11('S-2','',1), fila11('S-3','TRW',1) ];
+  const p = _catPlanImport(hoja11(rows), map11, { marcaObligatoria:true }, [], []);
+  eq(p.sinMarca.length, 2, '2 filas sin marca → pendientes');
+  eq(p.resumen.nuevos, 1, 'entra sólo la que tiene marca');
+  eq(p.aplicaciones.insert.length, 0, 'la aplicación de S-1 tampoco entra');
+  const d = _catPlanImport(hoja11(rows), map11, { marcaObligatoria:true, decisiones:{ marcaVacias:'DESPIECE' } }, [], []);
+  eq(d.sinMarca.length, 0, 'eligiendo DESPIECE para todas no queda ninguna afuera');
+  eq(d.resumen.nuevos, 3, '3 altas');
+  eq(d.articulos.insert.filter(x => x.payload.marca_articulo === 'DESPIECE').length, 2, 'las 2 vacías entran como DESPIECE');
+  eq(d.articulos.insert.find(x => x.codigo === 'S-3').payload.marca_articulo, 'TRW', 'la que tenía marca no se toca');
+  eq(d.aplicaciones.insert.length, 1, 'y la aplicación de S-1 ahora sí entra');
+  const fijo = _catPlanImport(hoja11(rows), map11, { marcaObligatoria:true, fijos:{ marca_art:'VTH' } }, [], []);
+  eq(fijo.sinMarca.length, 0, 'con valor fijo de marca no hay filas sin marca');
+  const sinCod = _catPlanImport(hoja11([fila11('','',1)]), map11, { marcaObligatoria:true }, [], []);
+  eq(sinCod.resumen.err + sinCod.sinMarca.length, 1, 'fila sin código ni marca → error de código, una sola vez');
+  eq(sinCod.resumen.err, 1, '… cuenta como error (falta código), no como "sin marca"');
+}
+
 // --- resumen final -----------------------------------------------------------
 console.log(`\n${C.b}RESUMEN:${C.x} ${C.g}${pass} OK${C.x}` + (fail ? `, ${C.r}${fail} FALLARON${C.x}` : '') + '\n');
 process.exit(fail ? 1 : 0);
