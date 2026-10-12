@@ -2398,6 +2398,9 @@ const CAT_ENCHUFES={
   oems:             { k:it=>_catNormCodigo(it.oem), upd:null },
   medidas:          { k:it=>_normTxt(it.nombre_medida), upd:'valor' },
   datos_tecnicos:   { k:it=>_normTxt(it.nombre_dato), upd:'valor' },
+  // F1.3b: lista para prender cuando se corra _dev/sql/2026-10-12-F1.3b-codigos-equivalentes.sql
+  // (la tabla `equivalencias` de hoy une artículo↔base_id; no guarda "fábrica + código").
+  codigos_equivalentes:{ k:it=>_normTxt(it.marca_texto)+'\u0000'+_catNormCodigo(it.codigo), upd:null },
 };
 const CAT_ENCHUFADOS=['codigos_proveedor','oems','medidas','datos_tecnicos'];
 
@@ -2429,6 +2432,15 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
     const r=_catParesDeFila(fila, det, 'medidas', ctx);
     warnings.push(...r.warnings);
     items.medidas=r.filas.map(p=>({nombre_medida:p.nombre, valor:p.valor}));
+  }
+  // F1.3b — equivalencias: "Nombre equivalencia n" = la fábrica, "Equivalencia n" = su código.
+  // Se leen SIEMPRE (F1.8 las usa para agrupar con artículos que ya existen). Se GUARDAN sólo si el
+  // enchufe está prendido (falta correr el SQL de la tabla codigos_equivalentes).
+  {
+    const r=_catParesDeFila(fila, det, 'equivalencias', ctx);
+    warnings.push(...r.warnings);
+    items._equivalencias=r.filas.map(p=>({marca_texto:p.nombre, codigo:p.valor}));
+    if(on('codigos_equivalentes')) items.codigos_equivalentes=items._equivalencias.slice();
   }
   if(on('datos_tecnicos')){
     // F1.3e: igual que medidas (nombre = el dato, valor = texto)
@@ -2481,6 +2493,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // F1.3 enchufes: filas hijas por tabla. insert: {codigo, marca_art, idArt|null, row} · update: {id, set, antes}
   plan.hijos={}; CAT_ENCHUFADOS.forEach(t=>{ plan.hijos[t]={insert:[], update:[], skip:0}; });
   plan.paresWarnings=[]; plan.hijosConflictos=[];
+  plan.equivalencias=[];         // F1.3b: {codigo, marca_art, marca_texto, codigo_eq} de las filas que entran
   // lo que ya hay en la base, indexado: idArt -> (clave -> fila). Para codigos_proveedor además la
   // clave GLOBAL (proveedor + código), porque la base no deja el mismo código de un proveedor en dos artículos.
   const dbH={}, cpGlobal=new Map();
@@ -2715,6 +2728,11 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
         // F1.3: filas hijas (dedup contra el archivo y contra la base)
         if(!retenida){
           plan.paresWarnings.push(...hj.warnings);
+          (hj.items._equivalencias||[]).forEach(e=>{
+            const vk='eq|'+cl+'|'+_normTxt(e.marca_texto)+'|'+_catNormCodigo(e.codigo);
+            if(vistosHijos.has(vk)) return; vistosHijos.add(vk);
+            plan.equivalencias.push({codigo, marca_art, marca_texto:e.marca_texto, codigo_eq:e.codigo});
+          });
           const idArt=existente?existente.id:null;
           CAT_ENCHUFADOS.forEach(t=>{
             const def=CAT_ENCHUFES[t], dest=plan.hijos[t];
@@ -3153,7 +3171,7 @@ async function catPrevisualizar(){
   }
   // F1.3: filas hijas que ya existen (para no duplicar al reimportar). codigos_proveedor se trae
   // ENTERA: la base no deja el mismo código de un proveedor en dos artículos, hay que verlo antes.
-  const CAT_SEL_HIJOS={codigos_proveedor:'id,id_articulo,proveedor_id,codigo_proveedor', oems:'id,id_articulo,oem', medidas:'id,id_articulo,nombre_medida,valor', datos_tecnicos:'id,id_articulo,nombre_dato,valor'};
+  const CAT_SEL_HIJOS={codigos_equivalentes:'id,id_articulo,marca_texto,codigo', codigos_proveedor:'id,id_articulo,proveedor_id,codigo_proveedor', oems:'id,id_articulo,oem', medidas:'id,id_articulo,nombre_medida,valor', datos_tecnicos:'id,id_articulo,nombre_dato,valor'};
   const dbHijos={};
   for(const t of CAT_ENCHUFADOS){
     if(t==='codigos_proveedor'){ const {data,error:eh}=await _sbSelectAll(()=>_sb.from(t).select(CAT_SEL_HIJOS[t])); if(eh){toast('Error cargando '+t,true);return;} dbHijos[t]=data||[]; continue; }
@@ -3289,6 +3307,9 @@ function _catPreguntasHtml(plan){
       <div style="font-size:12px">${plan.proveedoresPendientes.map(p=>`<b>${_escAttr(p.valor)}</b> <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span>`).join(' &nbsp; ')}</div>`);
   }
   // F1.3: avisos de los pares (no traban: la fila entra, ese dato no)
+  if(plan.equivalencias&&plan.equivalencias.length&&!CAT_ENCHUFADOS.includes('codigos_equivalentes')){
+    sec.push(`<div style="font-size:11px;color:var(--info);margin:${mg()} 0 4px"><i class="ti ti-info-circle"></i> Se leyeron <b>${plan.equivalencias.length}</b> equivalencias (otra fábrica + su código). Todavía <b>no se guardan</b>: falta crear su tabla en la base (SQL pendiente).</div>`);
+  }
   const avisos=[...(plan.hijosConflictos||[]).map(c=>`${c.codigo} (${c.marca||'sin marca'}): ${c.detalle}`), ...(plan.paresWarnings||[]).map(w=>`${(w.ctx&&w.ctx.codigo)||'?'}: ${w.motivo}`)];
   if(avisos.length){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:${mg()} 0 6px"><i class="ti ti-alert-circle"></i> Datos extra que no se cargan (${avisos.length}) — la fila entra igual</div>

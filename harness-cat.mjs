@@ -18,7 +18,7 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO,_catColsOem,_catHijosDeFila};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO,_catColsOem,_catHijosDeFila,CAT_ENCHUFADOS};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
@@ -1289,6 +1289,19 @@ head('F1.3e — datos técnicos y la fila de ejemplo de la PLANILLA-MAESTRA');
   eq(p.hijos.codigos_proveedor.insert.length, 2, '2 códigos de proveedor');
   eq(p.resumen.hijosIns, 9, 'resumen: 9 datos extra');
   eq(p.paresWarnings.length, 0, 'sin avisos');
+}
+
+// ===========================================================================
+// F1.3b — equivalencias: se leen (F1.8 las usa) pero no se guardan hasta correr su SQL
+// ===========================================================================
+head('F1.3b — equivalencias leídas, sin guardar todavía');
+{
+  const H = ['Codigo','Descripcion','Marca articulo','Nombre equivalencia 1','Equivalencia 1','Nombre equivalencia 2','Equivalencia 2'];
+  const row = (c, n1, e1, n2, e2) => ({ 'Codigo':c, 'Descripcion':'D', 'Marca articulo':'SKF', 'Nombre equivalencia 1':n1||'', 'Equivalencia 1':e1||'', 'Nombre equivalencia 2':n2||'', 'Equivalencia 2':e2||'' });
+  const p = _catPlanImport([{ nombre:'M', rubroId:'r', rubroNombre:'R', headers:H, rows:[ row('6203-2RS','NSK','6203DDU','FAG','6203-2RSR'), row('6203-2RS','NSK','6203-DDU') ] }], _catAutodetect(H), {}, [], []);
+  eq(p.equivalencias.map(e => e.marca_texto + ' ' + e.codigo_eq).join(' | '), 'NSK 6203DDU | FAG 6203-2RSR', '2 equivalencias (la repetida con guion no cuenta dos veces)');
+  ok(!('codigos_equivalentes' in p.hijos), 'no hay filas hijas de equivalencias: el enchufe está apagado hasta correr el SQL');
+  eq(core.CAT_ENCHUFADOS.includes('codigos_equivalentes'), false, 'CAT_ENCHUFADOS no lo incluye');
 }
 
 // --- resumen final -----------------------------------------------------------
