@@ -507,6 +507,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
           <div class="fg" style="margin-bottom:0"><label>Aplicaciones <span style="color:var(--text3);text-transform:none">(celda ///)</span></label><select id="cat-col-aplic"></select></div>
           <div class="fg" style="margin-bottom:0"><label>Stock</label><select id="cat-col-stock"></select><input class="cat-fijo" id="cat-fijo-stock" placeholder="o valor fijo…"></div>
           <div class="fg" style="margin-bottom:0"><label>Ubicación</label><select id="cat-col-ubicacion"></select><input class="cat-fijo" id="cat-fijo-ubicacion" placeholder="o valor fijo…"></div>
+          <div class="fg" style="margin-bottom:0"><label>Proveedor</label><select id="cat-col-proveedor"></select><input class="cat-fijo" id="cat-fijo-proveedor" list="cat-dl-proveedores" placeholder="o valor fijo…"><datalist id="cat-dl-proveedores"></datalist></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
           <label style="font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin:0">Rubro</label>
@@ -2002,6 +2003,10 @@ const CAT_CAMPOS=[
   {key:'aplic',       label:'Aplicaciones',     cands:['aplicaciones','aplicacion','aplic','compatibilidad','vehiculos','vehiculo']},
   {key:'stock',       label:'Stock',            cands:['cantidad','existencia','cant','stock'], fijo:true},
   {key:'ubicacion',   label:'Ubicación',        cands:['ubicacion','ubic','estante','deposito','posicion','lugar'], fijo:true},
+  // refuerzo b (11/10): de qué proveedor viene el archivo (Expoyer, Bramco…). Casi siempre es un valor
+  // fijo para todo el archivo. `exacto`: sólo agarra una columna llamada así, nunca "Nombre proveedor 1"
+  // ni "Codigo proveedor 1" (esas son pares de F1.3a).
+  {key:'proveedor',   label:'Proveedor',        cands:['proveedor'], fijo:true, exacto:true},
   // F1.0c-2: va ÚLTIMO a propósito. _catAutodetect marca las columnas como usadas en el
   // orden de esta lista, así que ningún campo de arriba puede perder su columna por éste.
   {key:'rubro',       label:'Rubro',            cands:['rubro','rubros','categoria','familia','tipo de producto']}
@@ -2029,7 +2034,7 @@ function _catAutodetect(headers){
     }
   });
   CAT_CAMPOS.forEach(c=>{
-    if(res[c.key]) return;
+    if(res[c.key] || c.exacto) return;
     for(const cd of c.cands){
       const f=norm.find(o=>!used.has(o.h)&&o.n.includes(cd));
       if(f){ res[c.key]=f.h; used.add(f.h); break; }
@@ -2233,6 +2238,16 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const decCod=(opts.decisiones&&opts.decisiones.codigo)||{};
   const dudasCod=new Map();    // clave -> {clave, marca, codigos:[], filas}
   plan.dudasCodigo=[]; plan.paraCorregir=[];
+  // refuerzo b: la fila coincide con un artículo (código + marca) que ya tiene OTRO proveedor principal.
+  // No se actualiza en silencio: ¿es la misma pieza? opts.decisiones.prov[clave] = 'misma' | 'otra'.
+  // El proveedor de la fila sale del campo Proveedor (columna o valor fijo) y se resuelve contra
+  // opts.proveedoresDB por nombre normalizado. Si no existe: pendiente, NO se crea solo.
+  const decProv=(opts.decisiones&&opts.decisiones.prov)||{};
+  const provsDB=(opts.proveedoresDB||[]);
+  const provNombre=id=>{ const p=provsDB.find(x=>x.id===id); return p?p.nombre:'otro proveedor'; };
+  const dudasProv=new Map();   // clave -> {clave, codigo, marca, provArchivo, provBase, filas}
+  const pendProv=new Map();    // nombre normalizado -> {valor, filas}
+  plan.dudasProv=[]; plan.proveedoresPendientes=[];
   const vistosApl=new Set();   // dedup de aplicación dentro del archivo (por código+marca)
   // el preview se agrupa por RUBRO, no por hoja: dos hojas del mismo rubro caen en un solo bloque.
   // Hoy cada hoja tiene un rubro único, así que el resultado es el mismo que agrupar por hoja.
@@ -2274,6 +2289,14 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       const marca_art=get('marca_art');
       const codigo_barra=get('codigo_barra');
       const ubicacion=get('ubicacion');
+      // proveedor de la fila (refuerzo b). Sin proveedor = como siempre.
+      let provId=null;
+      const provTxt=get('proveedor');
+      if(provTxt){
+        const pv=provsDB.find(x=>_normTxt(x.nombre)===_normTxt(provTxt));
+        if(pv) provId=pv.id;
+        else{ const k=_normTxt(provTxt), p=pendProv.get(k); if(p) p.filas++; else pendProv.set(k,{valor:provTxt, filas:1}); return; }
+      }
       let stock=0; if(map.stock||fijos.stock!==undefined){ const n=parseInt(get('stock').replace(/[^0-9\-]/g,''),10); stock=isNaN(n)?0:n; }
 
       let estado, existente=null, apps=[];
@@ -2284,7 +2307,12 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       else{
         const visto=vistosCod.get(cl);
         const escritoDistinto=visto && codigo.trim().toLowerCase()!==visto.codigo.trim().toLowerCase();
-        if(escritoDistinto && decCod[cl]!=='misma'){
+        if(visto && visto.retenida){
+          // la primera fila de esta clave quedó esperando (o para corregir) por el proveedor: ésta la sigue
+          retenida=true; estado=visto.retenida;
+          if(estado==='duda') dudasProv.get(cl).filas++;
+          else plan.paraCorregir.push({hoja:h.nombre, codigo, marca:marca_art, desc:descBase, motivo:'ya existe con otro proveedor'});
+        }else if(escritoDistinto && decCod[cl]!=='misma'){
           retenida=true;
           if(decCod[cl]==='otra'){ estado='otra'; plan.paraCorregir.push({hoja:h.nombre, codigo, marca:marca_art, desc:descBase, motivo:`código parecido a ${visto.codigo}`}); }
           else{
@@ -2299,8 +2327,20 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           estado='masapl'; existente=visto.existente;
         }else{
           existente=mapaArt[cl]||null;
-          vistosCod.set(cl,{existente, codigo});
-          if(existente){
+          const choqueProv=!!(existente && provId && existente.proveedor_principal_id && existente.proveedor_principal_id!==provId);
+          if(choqueProv && decProv[cl]!=='misma'){
+            retenida=true;
+            const nomBase=provNombre(existente.proveedor_principal_id);
+            if(decProv[cl]==='otra'){
+              estado='otra';
+              plan.paraCorregir.push({hoja:h.nombre, codigo, marca:marca_art, desc:descBase, motivo:`ya existe con otro proveedor (${nomBase})`});
+            }else{
+              estado='duda';
+              dudasProv.set(cl,{clave:cl, codigo, marca:marca_art, provArchivo:provTxt, provBase:nomBase, filas:1});
+            }
+            vistosCod.set(cl,{existente, codigo, retenida:estado});
+          }else if(existente){
+            vistosCod.set(cl,{existente, codigo});
             const esRevive=!!existente.deleted_at;   // fila soft-deleted: el código UNIQUE ya está ocupado → revivir, no INSERT
             estado=esRevive?'reviv':'upd';
             // OJO: sin rubro_id. El rubro de un artículo que ya existe lo decide Jere, no el archivo:
@@ -2310,11 +2350,17 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
             if(ubicacion) payload.ubicacion=ubicacion;
             // snapshot de los valores que vamos a pisar, para poder DESHACER esta importación
             const antes={descripcion:existente.descripcion, marca_articulo:existente.marca_articulo, rubro_id:existente.rubro_id};
+            // el artículo no tenía proveedor principal → toma el del archivo. Si tenía OTRO y Jere dijo
+            // "es la misma", el principal NO se cambia (el código de este proveedor va por F1.3a).
+            if(provId && !existente.proveedor_principal_id){ payload.proveedor_principal_id=provId; antes.proveedor_principal_id=null; }
             if(esRevive){ payload.deleted_at=null; antes.deleted_at=existente.deleted_at; }   // revivir; deshacer vuelve a soft-deletear
             plan.articulos.update.push({id:existente.id, codigo, marca_art, payload, antes, reviv:esRevive});
           }else{
+            vistosCod.set(cl,{existente, codigo});
             estado='nuevo';
-            plan.articulos.insert.push({codigo, marca_art, payload:{codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true}});
+            const pl={codigo_articulo:codigo, codigo_barra:codigo_barra||null, descripcion, marca_articulo:marca_art||null, rubro_id:filaRubroId, stock:stock||0, ubicacion:ubicacion||null, activo:true};
+            if(provId) pl.proveedor_principal_id=provId;
+            plan.articulos.insert.push({codigo, marca_art, payload:pl});
           }
         }
         // aplicaciones: del choricito (sep ON) o de las columnas estructuradas (sep OFF)
@@ -2360,7 +2406,9 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // NO son un error de la fila: es un dato que falta resolver, y se pregunta en otra pantalla.
   pendMap.forEach(p=>plan.rubrosPendientes.push({valor:p.valor, filas:p.filas}));
   dudasCod.forEach(d=>plan.dudasCodigo.push(d));
-  plan.resumen={ dudas:plan.dudasCodigo.length, paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  dudasProv.forEach(d=>plan.dudasProv.push(d));
+  pendProv.forEach(p=>plan.proveedoresPendientes.push({valor:p.valor, filas:p.filas}));
+  plan.resumen={ dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -2470,6 +2518,7 @@ async function catLeerArchivo(file){
     });
     _catResetFijos();   // archivo nuevo → los valores fijos de la pasada anterior no se arrastran
     _catBase=null; _catDecisiones={codigo:{}, prov:{}};   // ni las respuestas del archivo anterior
+    _catCargarDatalistProv();
     // el selector de RUBRO no es una columna más: su opción vacía significa "usá el nombre de la hoja"
     _catFuenteRubro='hoja'; _catColRubro=''; _catRubrosResueltos={}; _catPendCol=[];
     const selRub=document.getElementById('cat-col-rubro');
@@ -2717,8 +2766,9 @@ async function catPrevisualizar(){
   // SOLO de los códigos presentes en el archivo. Ambas consultas paginan con _sbSelectAll: sin esto,
   // el tope de 1000 de Supabase truncaría la lista y, al reimportar, los códigos fuera de esa ventana
   // saldrían como "nuevos" en vez de "a actualizar".
-  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,rubro_id,deleted_at'));
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,rubro_id,proveedor_principal_id,deleted_at'));
   if(error){toast('Error cargando artículos',true);return;}
+  const {data:provs}=await _sb.from('proveedores').select('id,nombre').is('deleted_at',null);
   const codesFile=new Set();
   _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=_catNormCodigo(r[map.codigo]); if(c) codesFile.add(c); }));
   const idsExist=arts.filter(a=>codesFile.has(_catNormCodigo(a.codigo_articulo))).map(a=>a.id);
@@ -2728,7 +2778,7 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catBase={map, arts, dbApl, opts:{separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos()}};
+  _catBase={map, arts, dbApl, opts:{separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[]}};
   _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
 }
@@ -2745,6 +2795,18 @@ function catDecidirCodigo(i, val){
   _catDecisiones.codigo[d.clave]=val;
   _catReplanificar();
 }
+// refuerzo b: respuesta a "¿es la misma pieza?" cuando el artículo ya existe con otro proveedor
+function catDecidirProv(i, val){
+  const d=_catPlan&&_catPlan.dudasProv[i]; if(!d) return;
+  _catDecisiones.prov[d.clave]=val;
+  _catReplanificar();
+}
+// completa la lista de sugerencias del valor fijo de Proveedor
+async function _catCargarDatalistProv(){
+  const dl=document.getElementById('cat-dl-proveedores'); if(!dl) return;
+  const {data}=await _sb.from('proveedores').select('nombre').is('deleted_at',null).order('nombre');
+  dl.innerHTML=(data||[]).map(p=>`<option value="${_escAttr(p.nombre)}">`).join('');
+}
 
 // bloque de preguntas del preview: lo que no entra hasta que Jere conteste, y lo que quedó para corregir
 function _catPreguntasHtml(plan){
@@ -2755,6 +2817,16 @@ function _catPreguntasHtml(plan){
       plan.dudasCodigo.map((d,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
         <span><b>${d.codigos.map(_escAttr).join('</b> · <b>')}</b> <span style="color:var(--text3)">(${_escAttr(d.marca)||'sin marca'}) · ${d.filas} fila${d.filas===1?'':'s'} esperando</span></span>
         ${btn('catDecidirCodigo',i,'misma','Es la misma')} ${btn('catDecidirCodigo',i,'otra','Es otra (no entra)')}</div>`).join(''));
+  }
+  if(plan.dudasProv&&plan.dudasProv.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-help-circle"></i> Ya existen con OTRO proveedor — ¿es la misma pieza? (${plan.dudasProv.length})</div>`+
+      plan.dudasProv.map((d,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span><b>${_escAttr(d.codigo)}</b> (${_escAttr(d.marca)||'sin marca'}) · en la base: <b>${_escAttr(d.provBase)}</b> · en el archivo: <b>${_escAttr(d.provArchivo)}</b> <span style="color:var(--text3)">· ${d.filas} fila${d.filas===1?'':'s'}</span></span>
+        ${btn('catDecidirProv',i,'misma','Es la misma (actualiza)')} ${btn('catDecidirProv',i,'otra','Es otra (no entra)')}</div>`).join(''));
+  }
+  if(plan.proveedoresPendientes&&plan.proveedoresPendientes.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--danger);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-truck"></i> Proveedores que no existen — esas filas no entran. Crealo en Proveedores (o corregí el nombre) y volvé a previsualizar:</div>
+      <div style="font-size:12px">${plan.proveedoresPendientes.map(p=>`<b>${_escAttr(p.valor)}</b> <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span>`).join(' &nbsp; ')}</div>`);
   }
   if(plan.paraCorregir&&plan.paraCorregir.length){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-pencil"></i> Para corregir a mano en la planilla (no entran): ${plan.paraCorregir.length}</div>
@@ -2856,6 +2928,7 @@ function catRenderPreview(){
 
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
+  if(R.provPend) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.provPend} fila${R.provPend===1?'':'s'} sin proveedor conocido</span>`;
   const nDudas=_catDudasPendientes(plan);
   if(nDudas) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--accent)">${nDudas} pregunta${nDudas===1?'':'s'} sin contestar</span>`;
   document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns)===0 || nDudas>0;

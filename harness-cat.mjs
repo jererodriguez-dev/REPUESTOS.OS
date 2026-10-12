@@ -736,7 +736,8 @@ head('F1.0c-3 — sólo los campos con fijo:true admiten valor fijo');
   eq(ins[0].payload.descripcion, 'Pastilla del.', 'descripción sale de la columna, no del fijo');
   eq(ins[0].payload.codigo_barra, null, 'código de barra no admite fijo');
   const campos = core.CAT_CAMPOS.filter(c => c.fijo).map(c => c.key).join(',');
-  eq(campos, 'marca_art,marca_apl,modelo,motor,stock,ubicacion', 'la lista de campos fijables es la acordada');
+  // [11/10, refuerzo b de F1.1, ok de Jere] se suma Proveedor (6 → 7 campos)
+  eq(campos, 'marca_art,marca_apl,modelo,motor,stock,ubicacion,proveedor', 'la lista de campos fijables es la acordada');
 }
 
 head('F1.0c-3 — DEFAULT: sin fijos, todo se comporta como antes');
@@ -995,6 +996,65 @@ head('F1.1-a — mismo código escrito igual (o sólo distinto en mayúsculas) n
   const q = _catPlanImport(hoja11([ fila11('VPK 1006','VTH',1), fila11('VPK-1006','SKF',1) ]), map11, {}, [], []);
   eq(q.dudasCodigo.length, 0, 'con OTRA marca no hay duda: son dos artículos');
   eq(q.resumen.nuevos, 2, '… dos altas');
+}
+
+// ===========================================================================
+// F1.1 refuerzo b — mismo artículo (código + marca), OTRO proveedor → se pregunta
+// Caso típico: IMPORTADO, que envasan Expoyer y Bramco con numeraciones propias.
+// ===========================================================================
+const PROVS = [ { id:'p-exp', nombre:'Expoyer' }, { id:'p-bra', nombre:'BRAMCO' } ];
+head('F1.1-b — el campo Proveedor no le roba columnas a los pares de F1.3a');
+{
+  const m = _catAutodetect(['Codigo','Descripcion','Nombre proveedor 1','Codigo proveedor 1']);
+  eq(m.proveedor, '', '"Nombre proveedor 1" no se toma como columna Proveedor');
+  const m2 = _catAutodetect(['Codigo','Descripcion','PROVEEDOR']);
+  eq(m2.proveedor, 'PROVEEDOR', 'una columna "PROVEEDOR" sí');
+}
+head('F1.1-b — choque de proveedor');
+{
+  const base = [{ id:70, codigo_articulo:'IMP-100', marca_articulo:'IMPORTADO', descripcion:'x', proveedor_principal_id:'p-exp', deleted_at:null }];
+  const rows = [ fila11('IMP-100','IMPORTADO',1,'FIAT','UNO'), fila11('IMP-100','IMPORTADO',1,'FIAT','DUNA') ];
+  const opt = extra => Object.assign({ fijos:{ proveedor:'bramco' }, proveedoresDB:PROVS }, extra||{});
+  const p = _catPlanImport(hoja11(rows), map11, opt(), base, []);
+  eq(p.dudasProv.length, 1, 'Bramco trae IMP-100/IMPORTADO que es de Expoyer → 1 pregunta');
+  eq(p.dudasProv[0].provBase + ' / ' + p.dudasProv[0].provArchivo, 'Expoyer / bramco', 'la pregunta dice quién es quién');
+  eq(p.dudasProv[0].filas, 2, 'las dos filas de ese artículo esperan');
+  eq(p.resumen.upd + p.resumen.nuevos, 0, 'no actualiza ni da de alta nada en silencio');
+  eq(p.aplicaciones.insert.length, 0, 'ni sus aplicaciones');
+
+  const misma = _catPlanImport(hoja11(rows), map11, opt({ decisiones:{ prov:{ [p.dudasProv[0].clave]:'misma' } } }), base, []);
+  eq(misma.resumen.upd, 1, '"es la misma" → actualiza');
+  ok(!('proveedor_principal_id' in misma.articulos.update[0].payload), '… sin cambiarle el proveedor principal');
+  eq(misma.aplicaciones.insert.length, 2, '… y entran sus aplicaciones');
+
+  const otra = _catPlanImport(hoja11(rows), map11, opt({ decisiones:{ prov:{ [p.dudasProv[0].clave]:'otra' } } }), base, []);
+  eq(otra.resumen.upd + otra.resumen.nuevos, 0, '"es otra" → no entra');
+  eq(otra.paraCorregir.length, 2, '… las 2 filas quedan para corregir el código a mano');
+  eq(otra.dudasProv.length, 0, '… y no queda la pregunta');
+}
+head('F1.1-b — sin choque');
+{
+  const opt = { fijos:{ proveedor:'Expoyer' }, proveedoresDB:PROVS };
+  const mismoProv = _catPlanImport(hoja11([fila11('IMP-100','IMPORTADO',1)]), map11, opt,
+    [{ id:70, codigo_articulo:'IMP-100', marca_articulo:'IMPORTADO', descripcion:'x', proveedor_principal_id:'p-exp' }], []);
+  eq(mismoProv.dudasProv.length + mismoProv.resumen.upd, 1, 'mismo proveedor → actualiza sin preguntar');
+  const sinProvBase = _catPlanImport(hoja11([fila11('IMP-100','IMPORTADO',1)]), map11, opt,
+    [{ id:70, codigo_articulo:'IMP-100', marca_articulo:'IMPORTADO', descripcion:'x', proveedor_principal_id:null }], []);
+  eq(sinProvBase.articulos.update[0].payload.proveedor_principal_id, 'p-exp', 'el artículo sin proveedor toma el del archivo');
+  eq(sinProvBase.articulos.update[0].antes.proveedor_principal_id, null, '… y Deshacer lo vuelve a dejar vacío');
+  const alta = _catPlanImport(hoja11([fila11('IMP-200','IMPORTADO',1)]), map11, opt, [], []);
+  eq(alta.articulos.insert[0].payload.proveedor_principal_id, 'p-exp', 'el alta guarda el proveedor principal');
+  const sinCampo = _catPlanImport(hoja11([fila11('IMP-100','IMPORTADO',1)]), map11, {},
+    [{ id:70, codigo_articulo:'IMP-100', marca_articulo:'IMPORTADO', descripcion:'x', proveedor_principal_id:'p-exp' }], []);
+  eq(sinCampo.dudasProv.length, 0, 'archivo sin proveedor → como siempre, sin preguntas');
+}
+head('F1.1-b — proveedor que no existe: pendiente, no se crea solo');
+{
+  const p = _catPlanImport(hoja11([fila11('X-1','TRW',1), fila11('X-2','TRW',1)]), map11, { fijos:{ proveedor:'Proveedor Fantasma' }, proveedoresDB:PROVS }, [], []);
+  eq(p.proveedoresPendientes.length, 1, '1 proveedor pendiente');
+  eq(p.proveedoresPendientes[0].filas, 2, '… con 2 filas');
+  eq(p.resumen.nuevos, 0, 'esas filas no entran');
+  eq(p.resumen.provPend, 2, 'el resumen las cuenta');
 }
 
 // --- resumen final -----------------------------------------------------------
