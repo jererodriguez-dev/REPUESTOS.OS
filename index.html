@@ -401,7 +401,7 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <button class="btn primary sm" id="btn-admin-nuevo-rubro"><i class="ti ti-plus"></i>Nuevo rubro</button>
       </div>
       <div class="card" style="padding:0;overflow:hidden">
-        <table><thead><tr><th>Nombre</th><th>Datos técnicos</th><th>Medidas</th><th></th></tr></thead>
+        <table><thead><tr><th>Nombre</th><th title="Prefijo de base ID (agrupa equivalentes)">Prefijo base ID</th><th>Datos técnicos</th><th>Medidas</th><th></th></tr></thead>
         <tbody id="admin-rubros-tabla"></tbody></table>
       </div>
     </div>
@@ -633,7 +633,8 @@ tr:hover td{background:var(--bg3);color:var(--text)}
         <div class="fg"><label>Rubro</label><select id="ficha-rubro"><option value="">— Seleccionar —</option></select></div>
         <div class="fg"><label>Descripción</label><input id="ficha-desc" placeholder="Amortiguador del. KYB Corsa"></div>
         <div class="fg"><label>Fábrica <span style="color:var(--text3);font-weight:400">(de la lista)</span></label><input id="ficha-marca-art" list="dl-marcas" placeholder="Buscá: TRW, VTH…" autocomplete="off"></div>
-        <div class="fg"><label>Base ID <span style="color:var(--text3);font-weight:400">(agrupa equivalentes)</span></label><input id="ficha-baseid" placeholder="AMORT-CORSA-DEL" onblur="verificarBaseId(this.value)"></div>
+        <div class="fg"><label>Base ID <span style="color:var(--text3);font-weight:400">(agrupa equivalentes)</span></label><input id="ficha-baseid" placeholder="vacío = sin grupo" onblur="verificarBaseId(this.value)">
+          <div style="display:flex;gap:6px;margin-top:4px"><button type="button" class="btn sm" onclick="fichaGenerarBaseId()" title="Pide un número nuevo con el prefijo del rubro"><i class="ti ti-hash"></i>Generar</button><button type="button" class="btn sm" onclick="fichaSacarDelGrupo()" title="Deslinkear: el artículo deja de estar agrupado con sus equivalentes"><i class="ti ti-unlink"></i>Sacar del grupo</button></div></div>
         <div class="fg"><label>Ubicación en depósito</label><input id="ficha-ubic" placeholder="Estante A3"></div>
         <div class="fg"><label>Unidad de medida</label><select id="ficha-um"><option value="UN">Unidad</option><option value="PAR">Par</option><option value="KIT">Kit</option><option value="LT">Litro</option></select></div>
       </div>
@@ -1086,6 +1087,29 @@ async function verificarBaseId(val){
   }
 }
 // === BASEID-CORE END ===
+// F1.8 en la ficha: pedir un número nuevo para el grupo (prefijo del rubro + 6 dígitos)
+async function fichaGenerarBaseId(){
+  const inp=document.getElementById('ficha-baseid');
+  if(inp.value.trim()){toast('Este artículo ya tiene grupo. Para cambiarlo, primero sacalo del grupo',true);return;}
+  const rid=document.getElementById('ficha-rubro').value;
+  if(!rid){toast('Elegí el rubro primero',true);return;}
+  const r=rubrosDB.find(x=>x.id===rid);
+  if(!r||!r.prefijo_base_id){toast(`El rubro ${r?r.nombre:''} no tiene prefijo de base ID: cargalo en Administrar datos → Rubros`,true);return;}
+  const {data,error}=await _sb.rpc('fn_siguiente_base_id',{p_rubro_id:rid});
+  if(error||!data){toast('No se pudo generar: '+(error?error.message:'sin respuesta'),true);return;}
+  const {error:e2}=await _sb.from('base_productos').insert([{base_id:data, rubro_id:rid}]);
+  if(e2){toast('No se pudo crear el grupo: '+e2.message,true);return;}
+  inp.value=data;
+  toast('Base ID nuevo: '+data+' (se guarda al guardar el artículo)');
+}
+// deslinkear: el artículo sale del grupo (los demás equivalentes siguen juntos)
+function fichaSacarDelGrupo(){
+  const inp=document.getElementById('ficha-baseid');
+  if(!inp.value.trim()){toast('Este artículo no está en ningún grupo');return;}
+  const b=inp.value.trim(); inp.value='';
+  document.getElementById('baseid-aviso').style.display='none';
+  toast(`Sale del grupo ${b} al guardar el artículo`);
+}
 async function heredarDeBaseId(){
   if(!_baseIdData) return;
   // Heredar datos técnicos
@@ -1136,7 +1160,7 @@ async function cargarRubrosSelect(){
   // alias hoja→rubro para el importador (independiente de que haya rubros o no)
   const {data:al}=await _sb.from('alias_rubros').select('id,alias_texto,rubro_id').is('deleted_at',null);
   aliasDB=al||[];
-  const {data,error}=await _sb.from('rubros').select('id,nombre').is('deleted_at',null).order('nombre');
+  const {data,error}=await _sb.from('rubros').select('id,nombre,prefijo_base_id').is('deleted_at',null).order('nombre');
   if(error||!data?.length) return;
   rubrosDB=data;
   const opts=data.map(r=>`<option value="${r.id}">${r.nombre}</option>`).join('');
@@ -1327,7 +1351,7 @@ async function guardarArticulo(){
     codigo_barra:document.getElementById('ficha-barra').value||null,
     descripcion:desc,
     rubro_id:document.getElementById('ficha-rubro').value||null,
-    base_id:document.getElementById('ficha-baseid').value||null,
+    base_id:document.getElementById('ficha-baseid').value.trim()||null,
     marca_articulo:null, marca_id:null,   // F1.13: se completan abajo con la fábrica de la lista
     precio_venta_actual:precio,
     precio_costo_actual:parseFloat(document.getElementById('ficha-costo').value)||0,
@@ -1343,6 +1367,14 @@ async function guardarArticulo(){
     const m=_catResolverMarca(marcaTxt, marcasDB, aliasMarcasDB);
     if(!m){toast(`"${marcaTxt}" no está en la lista de fábricas. Elegila de la lista o creala en Administrar datos → Marcas`,true);return;}
     obj.marca_articulo=m.marcaNombre; obj.marca_id=m.marcaId;
+  }
+  // F1.8: articulos.base_id apunta a base_productos (FK). Si el grupo no existe, se crea con el rubro.
+  if(obj.base_id){
+    const {data:bp}=await _sb.from('base_productos').select('base_id').eq('base_id',obj.base_id).maybeSingle();
+    if(!bp){
+      const {error:eb}=await _sb.from('base_productos').insert([{base_id:obj.base_id, rubro_id:obj.rubro_id}]);
+      if(eb){toast('No se pudo crear el grupo '+obj.base_id+': '+eb.message,true);return;}
+    }
   }
   const idExist=document.getElementById('ficha-id').value;
   let artId=idExist?parseInt(idExist):null;
@@ -1876,13 +1908,27 @@ async function backup(){
 
 // ── ADMIN RUBROS ──
 async function renderAdminRubros(){
-  const {data}=await _sb.from('rubros').select('id,nombre').is('deleted_at',null).order('nombre');
+  const {data}=await _sb.from('rubros').select('id,nombre,prefijo_base_id').is('deleted_at',null).order('nombre');
+  const usados=(data||[]).map(r=>r.prefijo_base_id);
   document.getElementById('admin-rubros-tabla').innerHTML=(data||[]).map(r=>`<tr>
     <td><input value="${r.nombre}" style="width:180px" onchange="updateRubro('${r.id}',this.value)"></td>
+    <td><input value="${_escAttr(r.prefijo_base_id||'')}" placeholder="${_escAttr(_catProponerPrefijo(r.nombre, usados))}" maxlength="10" style="width:80px;text-transform:uppercase" title="Prefijo de los base ID de este rubro (ej. AMRT → AMRT-000001)" onchange="guardarPrefijoRubro('${r.id}',this.value).then(ok=>{ if(!ok) renderAdminRubros(); })"></td>
     <td style="font-size:10px;color:var(--text3)">${Object.keys(datosTecPorRubro[r.nombre]||{}).length?'Sí':'—'}</td>
     <td style="font-size:10px;color:var(--text3)">${medidasPorRubro[r.nombre]?.length||'—'}</td>
     <td><button class="btn sm danger" onclick="eliminarRubro('${r.id}','${r.nombre.replace(/'/g,"\\'")}')"><i class="ti ti-trash"></i></button></td>
-  </tr>`).join('')||'<tr><td colspan="4" style="color:var(--text3);text-align:center">Sin rubros</td></tr>';
+  </tr>`).join('')||'<tr><td colspan="5" style="color:var(--text3);text-align:center">Sin rubros</td></tr>';
+}
+// F1.8: prefijo de base_id del rubro. Mayúsculas, letras/números, no repetido entre rubros.
+async function guardarPrefijoRubro(rubroId, valor){
+  const p=String(valor||'').trim().toUpperCase();
+  if(!/^[A-Z0-9]{2,10}$/.test(p)){ toast('El prefijo va con 2 a 10 letras o números, sin espacios',true); return false; }
+  const otro=rubrosDB.find(r=>r.id!==rubroId && String(r.prefijo_base_id||'').toUpperCase()===p);
+  if(otro){ toast(`Ese prefijo ya lo usa ${otro.nombre}`,true); return false; }
+  const {error}=await _sb.from('rubros').update({prefijo_base_id:p}).eq('id',rubroId);
+  if(error){ toast('No se pudo guardar el prefijo: '+error.message,true); return false; }
+  await cargarRubrosSelect();
+  toast('Prefijo guardado: '+p);
+  return true;
 }
 async function updateRubro(id,nombre){
   if(!nombre.trim()) return;
@@ -2127,6 +2173,8 @@ const CAT_CAMPOS=[
   // fijo para todo el archivo. `exacto`: sólo agarra una columna llamada así, nunca "Nombre proveedor 1"
   // ni "Codigo proveedor 1" (esas son pares de F1.3a).
   {key:'proveedor',   label:'Proveedor',        cands:['proveedor'], fijo:true, exacto:true},
+  // F1.8: si la planilla trae Base ID, se respeta (agrupa equivalentes)
+  {key:'base_id',     label:'Base ID',          cands:['base id','baseid','base_id'], exacto:true},
   // F1.0c-2: va ÚLTIMO a propósito. _catAutodetect marca las columnas como usadas en el
   // orden de esta lista, así que ningún campo de arriba puede perder su columna por éste.
   {key:'rubro',       label:'Rubro',            cands:['rubro','rubros','categoria','familia','tipo de producto']}
@@ -2455,6 +2503,99 @@ function _catHijosDeFila(fila, det, provsDB, ctx){
   return {items, warnings, provPend};
 }
 
+// =====================================================================
+// F1.8 — BASE_ID: agrupar equivalentes
+// Un base_id es el grupo neutro que une la misma pieza en distintas fábricas. Reglas (decididas):
+//   · número nuevo = PREFIJO del rubro + 6 dígitos (AMRT-000001), lo da la base (fn_siguiente_base_id)
+//   · transitividad: a=b y b=c → los tres juntos
+//   · si un grupo junta dos base_id distintos → FUSIÓN con confirmación; gana el más viejo
+//   · si la planilla trae Base ID, se respeta
+// =====================================================================
+// propone un prefijo para un rubro: primera palabra, primera letra + consonantes, 4 letras.
+// AMORTIGUADORES → AMRT · RULEMANES → RLMN. No repite uno ya usado (le agrega un número).
+function _catProponerPrefijo(nombre, usados){
+  const pal=_normTxt(nombre).toUpperCase().replace(/[^A-Z0-9 ]/g,'').split(' ').filter(Boolean);
+  if(!pal.length) return 'BASE';
+  const w=pal[0];
+  let p=(w[0]+w.slice(1).replace(/[AEIOU]/g,'')).slice(0,4);
+  if(p.length<3) p=w.slice(0,4);
+  const set=new Set((usados||[]).filter(Boolean).map(x=>String(x).toUpperCase()));
+  let out=p, n=2; while(set.has(out)) out=p.slice(0,3)+(n++);
+  return out;
+}
+
+// arma los grupos con union-find y decide qué base_id le toca a cada artículo.
+//   nodos:   artículos del archivo que entran [{clave, id|null, codigo, marca_art, rubroId, baseArch}]
+//   equivs:  [{claveDe, claveA}] — "este artículo es equivalente a ese otro"
+//   dbArticulos: todos los de la base [{id, codigo_articulo, marca_articulo, rubro_id, base_id, deleted_at}]
+//   opts:    {baseProductos:[{base_id, created_at}], rubrosDB:[{id,nombre,prefijo_base_id}], decisiones:{fusion:{clave:'si'|'no'}}}
+// Devuelve {asignar:[{clave,id,codigo,marca_art,antes,base_id|grupo}], nuevosGrupos:[{grupo,rubroId,n}],
+//           crearBase:[{base_id,rubro_id}], fusiones:[{clave,gana,pierden,n,codigos}], sinPrefijo:[{rubroId,nombre}], notas:[]}
+function _catPlanBaseId(nodos, equivs, dbArticulos, opts){
+  opts=opts||{};
+  const norm=b=>String(b==null?'':b).trim().toUpperCase();
+  const orig=new Map();                       // normalizado → como está escrito (la FK distingue mayúsculas)
+  const reg=b=>{ const n=norm(b); if(n && !orig.has(n)) orig.set(n, String(b).trim()); return n||null; };
+  (opts.baseProductos||[]).forEach(b=>reg(b.base_id));
+  const parent=new Map();
+  const find=x=>{ if(!parent.has(x)) parent.set(x,x); let r=x; while(parent.get(r)!==r) r=parent.get(r); let c=x; while(parent.get(c)!==r){ const n=parent.get(c); parent.set(c,r); c=n; } return r; };
+  const unir=(a,b)=>{ const ra=find(a), rb=find(b); if(ra!==rb) parent.set(ra,rb); };
+  const info=new Map();
+  (dbArticulos||[]).forEach(a=>{
+    if(a.deleted_at) return;
+    const k='k:'+_catClaveArt(a.codigo_articulo, a.marca_articulo); if(info.has(k)) return;
+    info.set(k,{clave:k.slice(2), id:a.id, codigo:a.codigo_articulo, marca_art:a.marca_articulo, rubroId:a.rubro_id||null, actual:reg(a.base_id), arch:null, enArchivo:false});
+    find(k); if(a.base_id) unir(k,'b:'+norm(a.base_id));
+  });
+  (nodos||[]).forEach(n=>{
+    const k='k:'+n.clave;
+    const it=info.get(k)||{clave:n.clave, id:null, codigo:n.codigo, marca_art:n.marca_art, rubroId:null, actual:null, arch:null};
+    it.enArchivo=true; if(n.id!=null) it.id=n.id; if(!it.rubroId) it.rubroId=n.rubroId||null;
+    if(n.baseArch && !it.arch) it.arch=reg(n.baseArch);
+    info.set(k,it); find(k); if(it.arch) unir(k,'b:'+it.arch);
+  });
+  (equivs||[]).forEach(e=>{ const a='k:'+e.claveDe, b='k:'+e.claveA; if(a!==b && info.has(a) && info.has(b)) unir(a,b); });
+
+  const comps=new Map();
+  info.forEach((it,k)=>{ const r=find(k); if(!comps.has(r)) comps.set(r,[]); comps.get(r).push(it); });
+  const bp=new Map((opts.baseProductos||[]).map(b=>[norm(b.base_id), b]));
+  const decF=(opts.decisiones&&opts.decisiones.fusion)||{};
+  const out={asignar:[], nuevosGrupos:[], crearBase:[], fusiones:[], sinPrefijo:[], notas:[]};
+  let g=0;
+  comps.forEach(miembros=>{
+    if(!miembros.some(m=>m.enArchivo)) return;          // grupos que esta importación no toca: no se miran
+    const ids=[...new Set(miembros.flatMap(m=>[m.actual,m.arch]).filter(Boolean))];
+    const rub=(miembros.find(m=>m.rubroId)||{}).rubroId||null;
+    let destino=null, grupo=null;
+    if(!ids.length){
+      if(miembros.length<2) return;                        // un artículo solo no necesita grupo
+      if(!rub){ out.notas.push(`${miembros.length} equivalentes sin rubro (${miembros.map(m=>m.codigo).slice(0,4).join(', ')}): no se les genera base ID`); return; }
+      grupo='g'+(++g); out.nuevosGrupos.push({grupo, rubroId:rub, n:miembros.length});
+      const r=(opts.rubrosDB||[]).find(x=>x.id===rub);
+      if(!r || !r.prefijo_base_id){ if(!out.sinPrefijo.some(s=>s.rubroId===rub)) out.sinPrefijo.push({rubroId:rub, nombre:r?r.nombre:'(rubro)'}); }
+    }else if(ids.length===1){
+      destino=ids[0];
+    }else{
+      const ca=b=>bp.get(b)?bp.get(b).created_at:null;
+      const orden=ids.slice().sort((a,b)=>{ const x=ca(a), y=ca(b);
+        if(x&&y&&x!==y) return x<y?-1:1; if(x&&!y) return -1; if(!x&&y) return 1; return a<b?-1:(a>b?1:0); });
+      const clave=ids.slice().sort().join('|'), d=decF[clave];
+      if(d==='si') destino=orden[0];
+      else{
+        if(d!=='no') out.fusiones.push({clave, gana:orig.get(orden[0])||orden[0], pierden:orden.slice(1).map(x=>orig.get(x)||x), n:miembros.length, codigos:miembros.slice(0,6).map(m=>m.codigo)});
+        return;
+      }
+    }
+    if(destino && !bp.has(destino)) out.crearBase.push({base_id:orig.get(destino)||destino, rubro_id:rub});
+    miembros.forEach(m=>{
+      if(destino && m.actual===destino) return;           // ya está donde tiene que estar
+      out.asignar.push({clave:m.clave, id:m.id, codigo:m.codigo, marca_art:m.marca_art, antes:m.actual?(orig.get(m.actual)||m.actual):null,
+                        base_id:destino?(orig.get(destino)||destino):null, grupo});
+    });
+  });
+  return out;
+}
+
 function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   opts=opts||{}; map=map||{};
   const sep=!!opts.separarAplic;
@@ -2494,6 +2635,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   plan.hijos={}; CAT_ENCHUFADOS.forEach(t=>{ plan.hijos[t]={insert:[], update:[], skip:0}; });
   plan.paresWarnings=[]; plan.hijosConflictos=[];
   plan.equivalencias=[];         // F1.3b: {codigo, marca_art, marca_texto, codigo_eq} de las filas que entran
+  const nodosBase=new Map();     // F1.8: clave → {clave, id, codigo, marca_art, rubroId, baseArch}
   // lo que ya hay en la base, indexado: idArt -> (clave -> fila). Para codigos_proveedor además la
   // clave GLOBAL (proveedor + código), porque la base no deja el mismo código de un proveedor en dos artículos.
   const dbH={}, cpGlobal=new Map();
@@ -2727,6 +2869,11 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
         });
         // F1.3: filas hijas (dedup contra el archivo y contra la base)
         if(!retenida){
+          // F1.8: este artículo entra al armado de grupos (con el Base ID de la planilla, si trae)
+          const bArch=get('base_id');
+          const nb=nodosBase.get(cl);
+          if(!nb) nodosBase.set(cl,{clave:cl, id:existente?existente.id:null, codigo, marca_art, rubroId:existente?(existente.rubro_id||filaRubroId):filaRubroId, baseArch:bArch||null});
+          else if(bArch && !nb.baseArch) nb.baseArch=bArch;
           plan.paresWarnings.push(...hj.warnings);
           (hj.items._equivalencias||[]).forEach(e=>{
             const vk='eq|'+cl+'|'+_normTxt(e.marca_texto)+'|'+_catNormCodigo(e.codigo);
@@ -2776,6 +2923,14 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   // valores de la columna Rubro que no resolvieron, con cuántas filas dependen de cada uno.
   // NO son un error de la fila: es un dato que falta resolver, y se pregunta en otra pantalla.
   pendMap.forEach(p=>plan.rubrosPendientes.push({valor:p.valor, filas:p.filas}));
+  // F1.8: grupos de equivalentes. Una equivalencia (fábrica + código) une si ese artículo existe
+  // (en el archivo o en la base). La fábrica se resuelve contra la lista, si la hay.
+  const eqLinks=plan.equivalencias.map(e=>{
+    let mt=e.marca_texto;
+    if(usaMarcas){ const r=_catResolverMarca(mt, marcasDB, aliasMarcas); if(r) mt=r.marcaNombre; }
+    return {claveDe:_catClaveArt(e.codigo, e.marca_art), claveA:_catClaveArt(e.codigo_eq, mt)};
+  });
+  plan.baseId=_catPlanBaseId([...nodosBase.values()], eqLinks, dbArticulos, {baseProductos:opts.baseProductos, rubrosDB:opts.rubrosDB, decisiones:opts.decisiones});
   dudasCod.forEach(d=>plan.dudasCodigo.push(d));
   dudasProv.forEach(d=>plan.dudasProv.push(d));
   pendMarca.forEach(p=>plan.marcasPendientes.push(p));
@@ -2786,7 +2941,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
     plan.preguntasOriginal.push({hoja:p.hoja, filas:p.filas, sugerido:top?top[0]+' ORIGINAL':''});
   });
   pendProv.forEach(p=>plan.proveedoresPendientes.push({valor:p.valor, filas:p.filas}));
-  plan.resumen={ hijosIns:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].insert.length,0), hijosUpd:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].update.length,0), marcasPend:plan.marcasPendientes.length+plan.preguntasAuto.length+plan.preguntasOriginal.length, sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  plan.resumen={ baseAsig:plan.baseId.asignar.length, baseNuevos:plan.baseId.nuevosGrupos.length, hijosIns:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].insert.length,0), hijosUpd:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].update.length,0), marcasPend:plan.marcasPendientes.length+plan.preguntasAuto.length+plan.preguntasOriginal.length, sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -3155,10 +3310,14 @@ async function catPrevisualizar(){
   // SOLO de los códigos presentes en el archivo. Ambas consultas paginan con _sbSelectAll: sin esto,
   // el tope de 1000 de Supabase truncaría la lista y, al reimportar, los códigos fuera de esa ventana
   // saldrían como "nuevos" en vez de "a actualizar".
-  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,marca_id,rubro_id,proveedor_principal_id,deleted_at'));
+  const {data:arts,error}=await _sbSelectAll(()=>_sb.from('articulos').select('id,codigo_articulo,descripcion,marca_articulo,marca_id,rubro_id,proveedor_principal_id,base_id,deleted_at'));
   if(error){toast('Error cargando artículos',true);return;}
   const {data:provs}=await _sb.from('proveedores').select('id,nombre').is('deleted_at',null);
   await cargarMarcas();   // F1.13: la lista de fábricas fresca (alguien pudo crear una en la pestaña Marcas)
+  // F1.8: grupos que ya existen (para decidir quién gana una fusión: el más viejo) y prefijos de rubro frescos
+  const {data:baseProductos,error:eb}=await _sbSelectAll(()=>_sb.from('base_productos').select('base_id,rubro_id,created_at'));
+  if(eb){toast('Error cargando los base_id',true);return;}
+  await cargarRubrosSelect();
   if(!marcasDB.length){toast('No se pudo cargar la lista de fábricas (Marcas): sin ella no se puede importar',true);return;}
   const codesFile=new Set();
   _catHojas.forEach(h=>h.rows.forEach(r=>{ const c=_catNormCodigo(r[map.codigo]); if(c) codesFile.add(c); }));
@@ -3183,7 +3342,7 @@ async function catPrevisualizar(){
       dbHijos[t]=dbHijos[t].concat(data||[]);
     }
   }
-  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[], marcasDB, aliasMarcasDB, dbHijos}};
+  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[], marcasDB, aliasMarcasDB, dbHijos, baseProductos:baseProductos||[], rubrosDB}};
   _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
 }
@@ -3221,6 +3380,20 @@ async function catMarcaCrear(i){
   _catDecM().marcas[p.norm]={marcaId:r.marcaId, marcaNombre:r.marcaNombre};
   _catReplanificar();
 }
+// F1.8: fusión de dos grupos de equivalentes ('si' | 'no')
+function catDecidirFusion(i, val){
+  const f=_catPlan&&_catPlan.baseId&&_catPlan.baseId.fusiones[i]; if(!f) return;
+  if(!_catDecisiones.fusion) _catDecisiones.fusion={};
+  _catDecisiones.fusion[f.clave]=val; _catReplanificar();
+}
+// F1.8: guardar el prefijo de base_id de un rubro (lo propone la app, Jere lo puede cambiar)
+async function catGuardarPrefijo(i){
+  const s=_catPlan&&_catPlan.baseId&&_catPlan.baseId.sinPrefijo[i]; if(!s) return;
+  const ok=await guardarPrefijoRubro(s.rubroId, (document.getElementById('cat-pref-'+i)||{}).value);
+  if(!ok) return;
+  if(_catBase) _catBase.opts.rubrosDB=rubrosDB;
+  _catReplanificar();
+}
 function catDecidirAuto(i, val){
   const p=_catPlan&&_catPlan.preguntasAuto[i]; if(!p) return;
   _catDecM().auto[p.clave]=val; _catReplanificar();
@@ -3254,6 +3427,24 @@ function _catPreguntasHtml(plan){
   const sec=[];
   const btn=(fn,i,val,txt,cls)=>`<button class="btn sm ${cls||''}" onclick="${fn}(${i},'${val}')">${txt}</button>`;
   const mg=()=>sec.length?'10px':'0';
+  // F1.8 — grupos de equivalentes (base_id)
+  const B=plan.baseId||{};
+  (B.notas||[]).forEach(n=>sec.push(`<div style="font-size:11px;color:var(--text2);margin:${mg()} 0 4px"><i class="ti ti-info-circle"></i> ${_escAttr(n)}</div>`));
+  if(B.fusiones&&B.fusiones.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin:${mg()} 0 6px"><i class="ti ti-arrows-join"></i> Equivalentes que juntan dos grupos distintos — ¿los fusiono?</div>`+
+      B.fusiones.map((f,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span><b>${_escAttr(f.pierden.join(', '))}</b> → <b>${_escAttr(f.gana)}</b> <span style="color:var(--text3)">(gana el más viejo · ${f.n} artículos: ${_escAttr(f.codigos.join(', '))}${f.n>f.codigos.length?'…':''})</span></span>
+        ${btn('catDecidirFusion',i,'si','Sí, fusionar')} ${btn('catDecidirFusion',i,'no','No, dejarlos separados')}</div>`).join(''));
+  }
+  if(B.sinPrefijo&&B.sinPrefijo.length){
+    const usados=rubrosDB.map(r=>r.prefijo_base_id);
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--accent);margin:${mg()} 0 6px"><i class="ti ti-hash"></i> Para numerar grupos nuevos, el rubro necesita un prefijo de base ID</div>`+
+      B.sinPrefijo.map((s,i)=>`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:12px">
+        <span><b>${_escAttr(s.nombre)}</b></span>
+        <input id="cat-pref-${i}" value="${_escAttr(_catProponerPrefijo(s.nombre, usados))}" maxlength="10" style="max-width:90px;text-transform:uppercase">
+        <span style="color:var(--text3)">→ los grupos se numeran PREFIJO-000001, -000002… (lo podés cambiar después en Rubros)</span>
+        <button class="btn sm" onclick="catGuardarPrefijo(${i})">Guardar prefijo</button></div>`).join(''));
+  }
   // F1.13 — marcas (van primero: son las que más filas traban)
   (plan.notas||[]).forEach(n=>sec.push(`<div style="font-size:11px;color:var(--info);margin:${mg()} 0 4px"><i class="ti ti-info-circle"></i> ${_escAttr(n)}</div>`));
   if(plan.preguntasAuto&&plan.preguntasAuto.length){
@@ -3325,7 +3516,8 @@ function _catPreguntasHtml(plan){
 // ¿quedan preguntas sin contestar? (mientras haya, no se aplica nada)
 function _catDudasPendientes(plan){
   return plan?((plan.dudasCodigo||[]).length+(plan.dudasProv||[]).length
-    +(plan.marcasPendientes||[]).length+(plan.preguntasAuto||[]).length+(plan.preguntasOriginal||[]).length):0;
+    +(plan.marcasPendientes||[]).length+(plan.preguntasAuto||[]).length+(plan.preguntasOriginal||[]).length
+    +((plan.baseId&&plan.baseId.fusiones)||[]).length+((plan.baseId&&plan.baseId.sinPrefijo)||[]).length):0;
 }
 
 // --- virtualización del cuerpo del preview (windowing propio, sin librerías) ---
@@ -3417,11 +3609,12 @@ function catRenderPreview(){
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
   if(R.hijosIns||R.hijosUpd) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.hijosIns}</b> datos extra nuevos${R.hijosUpd?` (${R.hijosUpd} a actualizar)`:''} <span style="color:var(--text3)">(${Object.keys(plan.hijos).filter(t=>plan.hijos[t].insert.length||plan.hijos[t].update.length).map(t=>({codigos_proveedor:'cód. proveedor',oems:'OEM',medidas:'medidas',datos_tecnicos:'datos técnicos'})[t]||t).join(', ')})</span>`;
+  if(R.baseAsig) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.baseAsig}</b> se agrupan como equivalentes${R.baseNuevos?` (${R.baseNuevos} grupo${R.baseNuevos===1?'':'s'} nuevo${R.baseNuevos===1?'':'s'})`:''}`;
   if(R.sinMarca) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.sinMarca} sin marca</span>`;
   if(R.provPend) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.provPend} fila${R.provPend===1?'':'s'} sin proveedor conocido</span>`;
   const nDudas=_catDudasPendientes(plan);
   if(nDudas) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--accent)">${nDudas} pregunta${nDudas===1?'':'s'} sin contestar</span>`;
-  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns+R.hijosIns+R.hijosUpd)===0 || nDudas>0;
+  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns+R.hijosIns+R.hijosUpd+R.baseAsig)===0 || nDudas>0;
   document.getElementById('cat-preview-wrap').style.display='block';
   _catVirtPaint();   // pintura inicial (ya con display:block → hay clientHeight)
 }
@@ -3430,7 +3623,7 @@ async function catAplicar(){
   const plan=_catPlan; if(!plan){toast('Previsualizá primero',true);return;}
   if(_catDudasPendientes(plan)){toast('Contestá las preguntas del preview antes de aplicar',true);return;}
   const ins=plan.articulos.insert, upds=plan.articulos.update, apps=plan.aplicaciones.insert;
-  const nHijos=Object.values(plan.hijos||{}).reduce((n,H)=>n+H.insert.length+H.update.length,0);
+  const nHijos=Object.values(plan.hijos||{}).reduce((n,H)=>n+H.insert.length+H.update.length,0)+((plan.baseId&&plan.baseId.asignar.length)||0);
   if(!ins.length && !upds.length && !apps.length && !nHijos){toast('No hay nada para aplicar',true);return;}
   const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;
   let proc=0, err=0, aplOk=0, aplErr=0, aplSinArt=0;
@@ -3457,6 +3650,40 @@ async function catAplicar(){
     }));
     btn.innerHTML=`<i class="ti ti-loader"></i> ${Math.min(i+20,upds.length)}/${upds.length} updates`;
   }
+  // 2b) F1.8: grupos de equivalentes. Primero se crean los base_id que faltan (la FK lo exige), después
+  // se pide un número a la base para cada grupo nuevo, y al final se asigna a los artículos.
+  const hijosOps={altas:{}, updates:[]};   // también junta el "antes" de base_id para Deshacer
+  const baseDe={};                          // idArt → base_id (para las medidas y datos técnicos de abajo)
+  let baseOk=0, baseErr=0;
+  const B=plan.baseId;
+  if(B && B.asignar.length){
+    for(const c of B.crearBase){
+      const {error}=await _sb.from('base_productos').insert([{base_id:c.base_id, rubro_id:c.rubro_id}]);
+      if(error && !/duplicate|unique/i.test(error.message||'')) baseErr++;
+    }
+    const gid={};
+    for(const g of B.nuevosGrupos){
+      const {data:nuevo,error}=await _sb.rpc('fn_siguiente_base_id',{p_rubro_id:g.rubroId});
+      if(error||!nuevo){ baseErr++; continue; }
+      const {error:e2}=await _sb.from('base_productos').insert([{base_id:nuevo, rubro_id:g.rubroId}]);
+      if(e2){ baseErr++; continue; }
+      gid[g.grupo]=nuevo;
+    }
+    const porBase=new Map();
+    B.asignar.forEach(a=>{
+      const bid=a.base_id||gid[a.grupo]; if(!bid) return;
+      const id=a.id!=null?a.id:claveToId[a.clave]; if(!id){ baseErr++; return; }
+      if(!porBase.has(bid)) porBase.set(bid,[]); porBase.get(bid).push({id, antes:a.antes, alta:a.id==null});
+    });
+    for(const [bid,lst] of porBase){
+      for(let i=0;i<lst.length;i+=100){
+        const sl=lst.slice(i,i+100);
+        const {error}=await _sb.from('articulos').update({base_id:bid}).in('id',sl.map(x=>x.id));
+        if(error){ baseErr+=sl.length; continue; }
+        sl.forEach(x=>{ baseOk++; baseDe[x.id]=bid; if(!x.alta) hijosOps.updates.push({tabla:'articulos', id:x.id, antes:{base_id:x.antes}}); });
+      }
+    }
+  }
   // 3) aplicaciones (ya deduplicadas en el plan contra el archivo y la base): resolver código→id e insertar
   const aplPayload=[];
   apps.forEach(a=>{
@@ -3470,14 +3697,16 @@ async function catAplicar(){
   }
   // 3b) F1.3: filas hijas (códigos de proveedor, OEM, medidas, datos técnicos). Resuelven el artículo
   // igual que las aplicaciones; lo que no resuelve se cuenta (no se pierde en silencio).
-  const hijosOps={altas:{}, updates:[]}; let hijOk=0, hijErr=0, hijSinArt=0;
+  let hijOk=0, hijErr=0, hijSinArt=0;
   for(const t of Object.keys(plan.hijos||{})){
     const H=plan.hijos[t]; hijosOps.altas[t]=[];
     const pay=[];
     H.insert.forEach(x=>{
       const idArt=x.idArt!=null?x.idArt:claveToId[_catClaveArt(x.codigo, x.marca_art)];
       if(!idArt){ hijSinArt++; return; }
-      pay.push(Object.assign({id_articulo:idArt}, x.row));
+      const fila=Object.assign({id_articulo:idArt}, x.row);
+      if((t==='medidas'||t==='datos_tecnicos') && baseDe[idArt]) fila.base_id=baseDe[idArt];   // F1.8: medidas/datos con su grupo
+      pay.push(fila);
     });
     for(let i=0;i<pay.length;i+=CH){
       const {data,error}=await _sb.from(t).insert(pay.slice(i,i+CH)).select('id');
@@ -3497,10 +3726,12 @@ async function catAplicar(){
   if(err) msg+=` · ${err} con error`;
   if(aplErr) msg+=` · ${aplErr} aplic. fallaron`;
   if(aplSinArt) msg+=` · ${aplSinArt} aplicaciones sin artículo`;
+  if(baseOk) msg+=` · ${baseOk} agrupados como equivalentes`;
+  if(baseErr) msg+=` · ${baseErr} sin poder agrupar`;
   if(hijOk) msg+=` · ${hijOk} datos extra (códigos/medidas/…)`;
   if(hijErr) msg+=` · ${hijErr} datos extra fallaron`;
   if(hijSinArt) msg+=` · ${hijSinArt} datos extra sin artículo`;
-  toast(msg, !!(err||aplErr||aplSinArt||hijErr||hijSinArt));
+  toast(msg, !!(err||aplErr||aplSinArt||hijErr||hijSinArt||baseErr));
   initImportCat();
   renderAdminArt();
 }

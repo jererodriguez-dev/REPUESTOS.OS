@@ -18,7 +18,7 @@ const ei = HTML.indexOf(endMark);
 if (si < 0 || ei < 0) { console.error('No encontré los marcadores CAT-CORE en index.html'); process.exit(1); }
 // arranco DESPUÉS de la línea del marcador START (es un comentario) y corto en el marcador END
 const block = HTML.slice(HTML.indexOf('\n', si) + 1, HTML.lastIndexOf('\n', ei));
-const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO,_catColsOem,_catHijosDeFila,CAT_ENCHUFADOS};';
+const exports = '\nreturn {CAT_CAMPOS,CAT_PARES,_catPartirNumerado,_catDetectarPares,_catParesDeFila,_normTxt,_catAutodetect,_catAplKey,_esMotor,_catParseAplic,_catResolverRubro,_catHojaIgnorada,_catVWindow,_catPlanImport,_catBuildOperaciones,_catBuildLimpieza,_catPlanDeshacer,_catPuedeDeshacer,_catContarPorRubro,_catClaveArt,_catNormCodigo,_catResolverMarca,_catClasificarMarca,_catMapaHoja,CAT_MARCAS_AUTO,_catColsOem,_catHijosDeFila,CAT_ENCHUFADOS,_catPlanBaseId,_catProponerPrefijo};';
 let core;
 try { core = new Function(block + exports)(); }
 catch (e) { console.error('El bloque CAT-CORE no parsea/evalúa:', e.message); process.exit(1); }
@@ -1302,6 +1302,72 @@ head('F1.3b — equivalencias leídas, sin guardar todavía');
   eq(p.equivalencias.map(e => e.marca_texto + ' ' + e.codigo_eq).join(' | '), 'NSK 6203DDU | FAG 6203-2RSR', '2 equivalencias (la repetida con guion no cuenta dos veces)');
   ok(!('codigos_equivalentes' in p.hijos), 'no hay filas hijas de equivalencias: el enchufe está apagado hasta correr el SQL');
   eq(core.CAT_ENCHUFADOS.includes('codigos_equivalentes'), false, 'CAT_ENCHUFADOS no lo incluye');
+}
+
+// ===========================================================================
+// F1.8 — BASE_ID: agrupar equivalentes (transitividad + fusión)
+// ===========================================================================
+const H8 = ['Codigo','Descripcion','Marca articulo','Base ID','Nombre equivalencia 1','Equivalencia 1'];
+const map8 = _catAutodetect(H8);
+const RUB8 = [ { id:'r-rlm', nombre:'RULEMANES', prefijo_base_id:'RLMN' }, { id:'r-sin', nombre:'ESPIRALES', prefijo_base_id:null } ];
+const f8 = (c, m, eqM, eqC, base) => ({ 'Codigo':c, 'Descripcion':'D', 'Marca articulo':m, 'Base ID':base||'', 'Nombre equivalencia 1':eqM||'', 'Equivalencia 1':eqC||'' });
+const plan8 = (rows, arts, extra) => _catPlanImport([{ nombre:'RULEMANES', rubroId:'r-rlm', rubroNombre:'RULEMANES', headers:H8, rows }], map8,
+  Object.assign({ rubrosDB:RUB8, baseProductos:[] }, extra||{}), arts||[], []).baseId;
+const grupoDe = (B, cod) => { const a = B.asignar.find(x => x.codigo === cod); return a ? (a.base_id || a.grupo) : null; };
+
+head('F1.8 — prefijo propuesto');
+{
+  eq(core._catProponerPrefijo('AMORTIGUADORES', []), 'AMRT', 'AMORTIGUADORES → AMRT');
+  eq(core._catProponerPrefijo('Rulemanes', []), 'RLMN', 'Rulemanes → RLMN');
+  eq(core._catProponerPrefijo('AMORTIGUADORES', ['amrt']), 'AMR2', 'si AMRT ya está, no lo repite');
+}
+head('F1.8 — transitividad');
+{
+  // caso 1: a=b y b=c en el archivo → un grupo nuevo de tres
+  const B1 = plan8([ f8('A','SKF','NSK','B'), f8('B','NSK','FAG','C'), f8('C','FAG') ]);
+  eq(B1.nuevosGrupos.length, 1, '1) a=b, b=c → un solo grupo nuevo');
+  eq(B1.nuevosGrupos[0].n, 3, '1) … con los tres');
+  ok(grupoDe(B1,'A') && grupoDe(B1,'A') === grupoDe(B1,'C'), '1) a y c quedan juntos aunque no se nombren entre sí');
+  eq(B1.nuevosGrupos[0].rubroId, 'r-rlm', '1) el número sale del prefijo del rubro');
+  // caso 2: b ya tiene base en la base → a (nuevo) se suma a ese grupo, no se genera número
+  const B2 = plan8([ f8('A','SKF','NSK','B') ], [ { id:2, codigo_articulo:'B', marca_articulo:'NSK', rubro_id:'r-rlm', base_id:'RLMN-000007' } ], { baseProductos:[{ base_id:'RLMN-000007', created_at:'2026-01-01' }] });
+  eq(B2.nuevosGrupos.length, 0, '2) no genera número nuevo');
+  eq(grupoDe(B2,'A'), 'RLMN-000007', '2) a toma el base_id de b');
+  ok(!B2.asignar.some(x => x.codigo === 'B'), '2) b no se toca (ya estaba)');
+  // caso 3: cadena por la base: a=b (b en grupo X), d=c (c en grupo X) → a y d van a X
+  const arts3 = [ { id:2, codigo_articulo:'B', marca_articulo:'NSK', base_id:'X-1' }, { id:3, codigo_articulo:'C', marca_articulo:'FAG', base_id:'X-1' } ];
+  const B3 = plan8([ f8('A','SKF','NSK','B'), f8('D','TRW','FAG','C') ], arts3, { baseProductos:[{ base_id:'X-1', created_at:'2026-01-01' }] });
+  eq(grupoDe(B3,'A') + ' ' + grupoDe(B3,'D'), 'X-1 X-1', '3) a y d llegan al mismo grupo por distintos caminos');
+  // caso 4: la planilla trae Base ID → se respeta (y se crea en base_productos si no existe)
+  const B4 = plan8([ f8('A','SKF','','','pl-001'), f8('B','NSK','','','PL-001') ]);
+  eq(grupoDe(B4,'A') + ' ' + grupoDe(B4,'B'), 'pl-001 pl-001', '4) dos filas con el mismo Base ID (sin importar mayúsculas) → mismo grupo');
+  eq(B4.crearBase.map(x => x.base_id).join(','), 'pl-001', '4) como no existe, se crea en base_productos');
+  eq(B4.nuevosGrupos.length, 0, '4) no se genera número: manda el de la planilla');
+  // un artículo solo, sin equivalentes, no recibe grupo
+  eq(plan8([ f8('Z','SKF') ]).asignar.length, 0, 'un artículo sin equivalentes no necesita base_id');
+  // la equivalencia a un código que no existe no une nada
+  eq(plan8([ f8('Z','SKF','NSK','NO-EXISTE') ]).asignar.length, 0, 'equivalencia a algo que no está cargado → no inventa grupo');
+}
+head('F1.8 — fusión: dos grupos se encuentran → se pregunta; gana el más viejo');
+{
+  const arts = [ { id:1, codigo_articulo:'A', marca_articulo:'SKF', base_id:'RLMN-000002' },
+                 { id:2, codigo_articulo:'B', marca_articulo:'NSK', base_id:'RLMN-000001' },
+                 { id:3, codigo_articulo:'C', marca_articulo:'FAG', base_id:'RLMN-000002' } ];
+  const bps = [ { base_id:'RLMN-000002', created_at:'2026-05-01' }, { base_id:'RLMN-000001', created_at:'2026-06-01' } ];
+  const B = plan8([ f8('A','SKF','NSK','B') ], arts, { baseProductos:bps });
+  eq(B.fusiones.length, 1, 'a (grupo 2) = b (grupo 1) → una pregunta de fusión');
+  eq(B.fusiones[0].gana, 'RLMN-000002', 'gana el más viejo por fecha de creación (no por número)');
+  eq(B.asignar.length, 0, 'sin respuesta no se toca nada');
+  const si = plan8([ f8('A','SKF','NSK','B') ], arts, { baseProductos:bps, decisiones:{ fusion:{ [B.fusiones[0].clave]:'si' } } });
+  eq(si.asignar.map(x => x.codigo + '→' + x.base_id).join(' '), 'B→RLMN-000002', '"sí" → b pasa al grupo viejo; a y c ya estaban');
+  eq(si.asignar[0].antes, 'RLMN-000001', '… con su base_id de antes para Deshacer');
+  const no = plan8([ f8('A','SKF','NSK','B') ], arts, { baseProductos:bps, decisiones:{ fusion:{ [B.fusiones[0].clave]:'no' } } });
+  eq(no.asignar.length + no.fusiones.length, 0, '"no" → cada uno sigue en su grupo y no se vuelve a preguntar');
+}
+head('F1.8 — rubro sin prefijo: se avisa antes de generar');
+{
+  const B = _catPlanImport([{ nombre:'ESPIRALES', rubroId:'r-sin', rubroNombre:'ESPIRALES', headers:H8, rows:[ f8('A','SKF','NSK','B'), f8('B','NSK') ] }], map8, { rubrosDB:RUB8 }, [], []).baseId;
+  eq(B.sinPrefijo.map(s => s.nombre).join(','), 'ESPIRALES', 'pide el prefijo de ESPIRALES');
 }
 
 // --- resumen final -----------------------------------------------------------
