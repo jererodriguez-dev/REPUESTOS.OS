@@ -1181,6 +1181,58 @@ head('F1.13 — sin lista de marcas (opts.marcasDB ausente) todo sigue como ante
   ok(!('marca_id' in p.articulos.insert[0].payload), 'sin marca_id');
 }
 
+// ===========================================================================
+// F1.3a — ENCHUFE codigos_proveedor (Nombre proveedor n + Codigo proveedor n)
+// ===========================================================================
+const PROVS3 = [ { id:'p-das', nombre:'DASSEN' }, { id:'p-exp', nombre:'Expoyer' } ];
+const H3 = ['Codigo','Descripcion','Marca articulo','Nombre proveedor 1','Codigo proveedor 1','Nombre proveedor 2','Codigo proveedor 2'];
+const map3 = _catAutodetect(H3);
+const hoja3 = rows => [{ nombre:'MAESTRA', rubroId:'r', rubroNombre:'R', headers:H3, rows }];
+const f3 = (cod, marca, n1, c1, n2, c2) => ({ 'Codigo':cod, 'Descripcion':'D '+cod, 'Marca articulo':marca, 'Nombre proveedor 1':n1||'', 'Codigo proveedor 1':c1||'', 'Nombre proveedor 2':n2||'', 'Codigo proveedor 2':c2||'' });
+head('F1.3a — códigos de proveedor');
+{
+  eq(map3.codigo, 'Codigo', 'el mapeo no confunde "Codigo proveedor 1" con el código');
+  const p = _catPlanImport(hoja3([ f3('6203-2RS','SKF','DASSEN','DA6203','expoyer','EXP-6203') ]), map3, { proveedoresDB:PROVS3 }, [], []);
+  const ins = p.hijos.codigos_proveedor.insert;
+  eq(ins.length, 2, '2 códigos de proveedor para el alta');
+  eq(ins.map(x => x.row.proveedor_id + ':' + x.row.codigo_proveedor).join(' '), 'p-das:DA6203 p-exp:EXP-6203', 'cada uno con su proveedor (nombre normalizado)');
+  eq(ins[0].idArt, null, 'el alta todavía no tiene id: se resuelve al aplicar con la clave');
+  eq(_catClaveArt(ins[0].codigo, ins[0].marca_art), _catClaveArt('6203-2RS','SKF'), '… y trae código + marca para resolverlo');
+
+  const pend = _catPlanImport(hoja3([ f3('X-1','SKF','PROVEEDOR RARO','R-1'), f3('X-2','SKF') ]), map3, { proveedoresDB:PROVS3 }, [], []);
+  eq(pend.proveedoresPendientes.length, 1, 'proveedor desconocido en un par → pendiente (no se crea solo)');
+  eq(pend.resumen.nuevos, 1, 'esa fila espera; la otra entra');
+
+  const roto = _catPlanImport(hoja3([ f3('X-3','SKF','DASSEN','') ]), map3, { proveedoresDB:PROVS3 }, [], []);
+  eq(roto.resumen.nuevos, 1, 'par con nombre y sin código: la fila entra igual');
+  eq(roto.paresWarnings.length, 1, '… con un aviso');
+  eq(roto.hijos.codigos_proveedor.insert.length, 0, '… y ese par no se guarda');
+}
+head('F1.3a — reimportar no duplica; código ya usado en otro artículo → aviso');
+{
+  const arts = [ { id:1, codigo_articulo:'6203-2RS', marca_articulo:'SKF', descripcion:'x', deleted_at:null },
+                 { id:2, codigo_articulo:'OTRO', marca_articulo:'TRW', descripcion:'x', deleted_at:null } ];
+  const dbHijos = { codigos_proveedor:[ { id:900, id_articulo:1, proveedor_id:'p-das', codigo_proveedor:'DA6203' },
+                                        { id:901, id_articulo:2, proveedor_id:'p-exp', codigo_proveedor:'EXP-6203' } ] };
+  const p = _catPlanImport(hoja3([ f3('6203-2RS','SKF','DASSEN','DA-6203','Expoyer','EXP-6203') ]), map3, { proveedoresDB:PROVS3, dbHijos }, arts, []);
+  eq(p.hijos.codigos_proveedor.insert.length, 0, 'DA-6203 ya estaba como DA6203 en ese artículo → no se duplica');
+  eq(p.hijos.codigos_proveedor.skip, 1, '… cuenta como salteado');
+  eq(p.hijosConflictos.length, 1, 'EXP-6203 de Expoyer ya es de OTRO artículo → aviso, no se carga');
+  const dup = _catPlanImport(hoja3([ f3('A','SKF','DASSEN','DA1'), f3('A','SKF','DASSEN','DA1') ]), map3, { proveedoresDB:PROVS3 }, [], []);
+  eq(dup.hijos.codigos_proveedor.insert.length, 1, 'mismo par repetido en el archivo → una sola fila');
+}
+head('F1.3 — deshacer borra las filas hijas creadas y restaura las actualizadas');
+{
+  const ops = _catBuildOperaciones([1], [], [], { altas:{ codigos_proveedor:[7,8], medidas:[] }, updates:[ { tabla:'medidas', id:30, antes:{ valor:'17' } } ] });
+  eq(ops.altas_hijos.codigos_proveedor.join(','), '7,8', 'el snapshot guarda los ids hijos');
+  const d = _catPlanDeshacer({ tipo:'CATALOGO', operaciones:ops });
+  eq((d.borrarHijos.codigos_proveedor||[]).join(','), '7,8', 'deshacer los borra');
+  ok(!('medidas' in d.borrarHijos), 'una tabla sin altas no aparece');
+  eq(d.restoreHijos[0].set.valor, '17', 'y restaura el valor anterior de la medida');
+  ok(_catPuedeDeshacer({ tipo:'CATALOGO', operaciones:{ altas_hijos:{ oems:[1] } } }) === true, 'una importación que sólo cargó hijos se puede deshacer');
+  eq(_catBuildOperaciones([1],[],[]).altas_hijos, undefined, 'sin hijos, el snapshot es el de siempre');
+}
+
 // --- resumen final -----------------------------------------------------------
 console.log(`\n${C.b}RESUMEN:${C.x} ${C.g}${pass} OK${C.x}` + (fail ? `, ${C.r}${fail} FALLARON${C.x}` : '') + '\n');
 process.exit(fail ? 1 : 0);

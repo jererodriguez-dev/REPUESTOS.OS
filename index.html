@@ -2386,6 +2386,37 @@ function _catParesDeFila(fila, detectados, destino, ctx){
   return {filas:out, warnings};
 }
 
+// =====================================================================
+// F1.3a-e — LOS ENCHUFES del motor de pares: qué tabla hija recibe cada par.
+// Cada destino declara su clave de dedup DENTRO del artículo (`k`) y, si al reimportar la misma
+// clave trae otro valor, qué campo se actualiza (`upd`; null = sólo altas). La dedup es contra el
+// archivo y contra la base (opts.dbHijos), así reimportar no duplica (idempotente).
+// CAT_ENCHUFADOS dice cuáles están prendidos: se fueron sumando de a uno, un commit cada uno.
+// =====================================================================
+const CAT_ENCHUFES={
+  codigos_proveedor:{ k:it=>it.proveedor_id+'\u0000'+_catNormCodigo(it.codigo_proveedor), upd:null },
+};
+const CAT_ENCHUFADOS=['codigos_proveedor'];
+
+// los hijos de UNA fila, ya resueltos. Devuelve {items:{tabla:[row]}, warnings, provPend:[nombre]}.
+//   det: _catDetectarPares de los headers de la hoja · provsDB: [{id,nombre}]
+function _catHijosDeFila(fila, det, provsDB, ctx){
+  const items={}, warnings=[], provPend=[];
+  const on=t=>CAT_ENCHUFADOS.includes(t);
+  if(on('codigos_proveedor')){
+    const r=_catParesDeFila(fila, det, 'codigos_proveedor', ctx);
+    warnings.push(...r.warnings);
+    items.codigos_proveedor=[];
+    r.filas.forEach(p=>{
+      // el nombre del par tiene que ser un proveedor que exista: NO se crea solo (misma regla que rubros)
+      const pv=(provsDB||[]).find(x=>_normTxt(x.nombre)===_normTxt(p.nombre));
+      if(!pv){ if(!provPend.includes(p.nombre)) provPend.push(p.nombre); return; }
+      items.codigos_proveedor.push({proveedor_id:pv.id, codigo_proveedor:p.valor});
+    });
+  }
+  return {items, warnings, provPend};
+}
+
 function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   opts=opts||{}; map=map||{};
   const sep=!!opts.separarAplic;
@@ -2421,6 +2452,22 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
   const pendProv=new Map();    // nombre normalizado -> {valor, filas}
   plan.dudasProv=[]; plan.proveedoresPendientes=[];
   plan.sinMarca=[];            // refuerzo c: filas sin marca que esperan que Jere elija una
+  // F1.3 enchufes: filas hijas por tabla. insert: {codigo, marca_art, idArt|null, row} · update: {id, set, antes}
+  plan.hijos={}; CAT_ENCHUFADOS.forEach(t=>{ plan.hijos[t]={insert:[], update:[], skip:0}; });
+  plan.paresWarnings=[]; plan.hijosConflictos=[];
+  // lo que ya hay en la base, indexado: idArt -> (clave -> fila). Para codigos_proveedor además la
+  // clave GLOBAL (proveedor + código), porque la base no deja el mismo código de un proveedor en dos artículos.
+  const dbH={}, cpGlobal=new Map();
+  CAT_ENCHUFADOS.forEach(t=>{
+    const m=new Map(); dbH[t]=m;
+    ((opts.dbHijos||{})[t]||[]).forEach(x=>{
+      const k=CAT_ENCHUFES[t].k(x);
+      if(!m.has(x.id_articulo)) m.set(x.id_articulo,new Map());
+      m.get(x.id_articulo).set(k,x);
+      if(t==='codigos_proveedor') cpGlobal.set(k,x.id_articulo);
+    });
+  });
+  const vistosHijos=new Set();   // tabla|claveArt|claveHijo: dedup dentro del archivo
   // F1.13: con opts.marcasDB la marca se resuelve contra la lista (nombre exacto → alias) y se guarda
   // marca_id + el nombre OFICIAL en marca_articulo. Lo que no resuelve se pregunta y no entra hasta
   // contestarse. Sin opts.marcasDB, todo como antes (texto libre).
@@ -2457,6 +2504,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 
   (hojas||[]).forEach(h=>{
     const mh=_catMapaHoja(map, h);   // F1.13: MARCA/MARCAS en la misma hoja
+    const detH=_catDetectarPares((h&&h.headers)||((h&&h.rows&&h.rows[0])?Object.keys(h.rows[0]):[]));   // F1.3: pares de ESTA hoja
     if(mh._nota && !plan.notas.includes(mh._nota)) plan.notas.push(mh._nota);
     (h.rows||[]).forEach(r=>{
       const get=k=>fijos[k]!==undefined?fijos[k]:(mh[k]?String(r[mh[k]]==null?'':r[mh[k]]).trim():'');
@@ -2533,6 +2581,12 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
       }
       const codigo_barra=get('codigo_barra');
       const ubicacion=get('ubicacion');
+      // F1.3: hijos de la fila. Un proveedor de los pares que no existe deja la fila pendiente (no se crea solo).
+      const hj=_catHijosDeFila(r, detH, provsDB, {hoja:h.nombre, codigo});
+      if(codigo && hj.provPend.length){
+        hj.provPend.forEach(nom=>{ const k=_normTxt(nom), p=pendProv.get(k); if(p) p.filas++; else pendProv.set(k,{valor:nom, filas:1}); });
+        return;
+      }
       // proveedor de la fila (refuerzo b). Sin proveedor = como siempre.
       let provId=null;
       const provTxt=get('proveedor');
@@ -2630,6 +2684,30 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
           // marca_art = marca del ARTÍCULO (para resolver el id con la clave); marca = marca del VEHÍCULO
           plan.aplicaciones.insert.push({codigo, marca_art, marca:ap.marca, modelo:ap.modelo||null, motor:ap.motor||null, anio_desde:ap.anio_desde||null, anio_hasta:ap.anio_hasta||null});
         });
+        // F1.3: filas hijas (dedup contra el archivo y contra la base)
+        if(!retenida){
+          plan.paresWarnings.push(...hj.warnings);
+          const idArt=existente?existente.id:null;
+          CAT_ENCHUFADOS.forEach(t=>{
+            const def=CAT_ENCHUFES[t], dest=plan.hijos[t];
+            (hj.items[t]||[]).forEach(row=>{
+              const k=def.k(row), vk=t+'|'+cl+'|'+k;
+              if(vistosHijos.has(vk)){ dest.skip++; return; }
+              vistosHijos.add(vk);
+              if(t==='codigos_proveedor' && cpGlobal.has(k) && cpGlobal.get(k)!==idArt){
+                plan.hijosConflictos.push({tabla:t, codigo, marca:marca_art, detalle:`el código ${row.codigo_proveedor} de ese proveedor ya está en otro artículo`});
+                return;
+              }
+              const prev=idArt!=null && dbH[t].get(idArt) ? dbH[t].get(idArt).get(k) : null;
+              if(prev){
+                if(def.upd && String(prev[def.upd])!==String(row[def.upd])) dest.update.push({id:prev.id, set:{[def.upd]:row[def.upd]}, antes:{[def.upd]:prev[def.upd]}});
+                else dest.skip++;
+                return;
+              }
+              dest.insert.push({codigo, marca_art, idArt, row});
+            });
+          });
+        }
       }
       // el bloque del preview lo elige el rubro de LA FILA, no el de la hoja (F1.0c-2).
       // Con rubroFuente 'hoja' todas las filas de una hoja caen en el mismo grupo: idéntico a antes.
@@ -2662,7 +2740,7 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
     plan.preguntasOriginal.push({hoja:p.hoja, filas:p.filas, sugerido:top?top[0]+' ORIGINAL':''});
   });
   pendProv.forEach(p=>plan.proveedoresPendientes.push({valor:p.valor, filas:p.filas}));
-  plan.resumen={ marcasPend:plan.marcasPendientes.length+plan.preguntasAuto.length+plan.preguntasOriginal.length, sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
+  plan.resumen={ hijosIns:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].insert.length,0), hijosUpd:CAT_ENCHUFADOS.reduce((n,t)=>n+plan.hijos[t].update.length,0), marcasPend:plan.marcasPendientes.length+plan.preguntasAuto.length+plan.preguntasOriginal.length, sinMarca:plan.sinMarca.length, dudas:plan.dudasCodigo.length+plan.dudasProv.length, provPend:plan.proveedoresPendientes.reduce((n,p)=>n+p.filas,0), paraCorregir:plan.paraCorregir.length, nuevos:plan.articulos.insert.length, upd:plan.articulos.update.length, reviv:plan.articulos.update.filter(u=>u.reviv).length, err:plan.articulos.error.length, aplIns:plan.aplicaciones.insert.length, aplSkip:plan.aplicaciones.skip.length, noParseados:plan.noParseados.length };
   return plan;
 }
 
@@ -2671,12 +2749,18 @@ function _catPlanImport(hojas, map, opts, dbArticulos, dbAplicaciones){
 // arma el objeto que se guarda en importaciones.operaciones tras aplicar el catálogo.
 //   altasArtIds: ids de artículos insertados (altas)   ·   altasAplIds: ids de aplicaciones insertadas
 //   updates: plan.articulos.update (cada uno trae {id, antes})
-function _catBuildOperaciones(altasArtIds, altasAplIds, updates){
-  return {
+//   hijos (F1.3, opcional): {altas:{tabla:[ids]}, updates:[{tabla,id,antes}]}
+function _catBuildOperaciones(altasArtIds, altasAplIds, updates, hijos){
+  const ops={
     altas_articulos: (altasArtIds||[]).slice(),
     altas_aplicaciones: (altasAplIds||[]).slice(),
     updates_articulos: (updates||[]).map(u=>({id:u.id, antes:u.antes||{}}))
   };
+  if(hijos){
+    ops.altas_hijos={}; Object.keys(hijos.altas||{}).forEach(t=>{ ops.altas_hijos[t]=(hijos.altas[t]||[]).slice(); });
+    ops.updates_hijos=(hijos.updates||[]).map(u=>({tabla:u.tabla, id:u.id, antes:u.antes||{}}));
+  }
+  return ops;
 }
 
 // arma el operaciones de una limpieza de rubro(s): solo bajas (todo se revive al deshacer).
@@ -2694,7 +2778,9 @@ function _catBuildLimpieza(bajaArtIds, bajaAplIds, rubros){
 //   limpieza_rubro: bajas → revivir (deleted_at=NULL).
 function _catPlanDeshacer(imp){
   imp=imp||{}; const ops=imp.operaciones||{};
-  const out={ softDelArt:[], softDelApl:[], restoreArt:[], reviveArt:[], reviveApl:[] };
+  // F1.3: las filas hijas que creó la importación se BORRAN (esas tablas no tienen deleted_at y las
+  // creó ella); las que actualizó vuelven a su valor de antes.
+  const out={ softDelArt:[], softDelApl:[], restoreArt:[], reviveArt:[], reviveApl:[], borrarHijos:{}, restoreHijos:[] };
   if(imp.tipo==='limpieza_rubro'){
     out.reviveArt=(ops.bajas_articulos||[]).slice();
     out.reviveApl=(ops.bajas_aplicaciones||[]).slice();
@@ -2702,6 +2788,8 @@ function _catPlanDeshacer(imp){
     out.softDelArt=(ops.altas_articulos||[]).slice();
     out.softDelApl=(ops.altas_aplicaciones||[]).slice();
     out.restoreArt=(ops.updates_articulos||[]).map(u=>({id:u.id, set:u.antes||{}}));
+    Object.keys(ops.altas_hijos||{}).forEach(t=>{ if((ops.altas_hijos[t]||[]).length) out.borrarHijos[t]=ops.altas_hijos[t].slice(); });
+    out.restoreHijos=(ops.updates_hijos||[]).map(u=>({tabla:u.tabla, id:u.id, set:u.antes||{}}));
   }
   return out;
 }
@@ -2711,7 +2799,8 @@ function _catPuedeDeshacer(imp){
   if(!imp || imp.revertida_en) return false;
   const ops=imp.operaciones; if(!ops) return false;
   if(imp.tipo==='limpieza_rubro') return (ops.bajas_articulos||[]).length>0;
-  return (ops.altas_articulos||[]).length>0 || (ops.altas_aplicaciones||[]).length>0 || (ops.updates_articulos||[]).length>0;
+  const hijos=Object.values(ops.altas_hijos||{}).some(a=>(a||[]).length>0) || (ops.updates_hijos||[]).length>0;
+  return (ops.altas_articulos||[]).length>0 || (ops.altas_aplicaciones||[]).length>0 || (ops.updates_articulos||[]).length>0 || hijos;
 }
 
 // conteo de artículos ACTIVOS por rubro_id. articulos: [{rubro_id}]  →  {rubro_id: n}.
@@ -3034,7 +3123,21 @@ async function catPrevisualizar(){
     const {data}=await _sbSelectAll(()=>_sb.from('aplicaciones').select('id_articulo,marca,modelo,motor').in('id_articulo',slice).is('deleted_at',null));
     if(data) dbApl=dbApl.concat(data);
   }
-  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[], marcasDB, aliasMarcasDB}};
+  // F1.3: filas hijas que ya existen (para no duplicar al reimportar). codigos_proveedor se trae
+  // ENTERA: la base no deja el mismo código de un proveedor en dos artículos, hay que verlo antes.
+  const CAT_SEL_HIJOS={codigos_proveedor:'id,id_articulo,proveedor_id,codigo_proveedor', oems:'id,id_articulo,oem', medidas:'id,id_articulo,nombre_medida,valor', datos_tecnicos:'id,id_articulo,nombre_dato,valor'};
+  const dbHijos={};
+  for(const t of CAT_ENCHUFADOS){
+    if(t==='codigos_proveedor'){ const {data,error:eh}=await _sbSelectAll(()=>_sb.from(t).select(CAT_SEL_HIJOS[t])); if(eh){toast('Error cargando '+t,true);return;} dbHijos[t]=data||[]; continue; }
+    dbHijos[t]=[];
+    for(let i=0;i<idsExist.length;i+=200){
+      const slice=idsExist.slice(i,i+200);
+      const {data,error:eh}=await _sbSelectAll(()=>_sb.from(t).select(CAT_SEL_HIJOS[t]).in('id_articulo',slice));
+      if(eh){toast('Error cargando '+t,true);return;}
+      dbHijos[t]=dbHijos[t].concat(data||[]);
+    }
+  }
+  _catBase={map, arts, dbApl, opts:{marcaObligatoria:true, separarAplic:sep, rubroFuente:_catFuenteRubro, rubrosResueltos:_catRubrosResueltos, fijos:_catLeerFijos(), proveedoresDB:provs||[], marcasDB, aliasMarcasDB, dbHijos}};
   _catReplanificar();
   if(_catPlan.warnings.length) toast(_catPlan.warnings[0],true);
 }
@@ -3157,6 +3260,12 @@ function _catPreguntasHtml(plan){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--danger);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-truck"></i> Proveedores que no existen — esas filas no entran. Crealo en Proveedores (o corregí el nombre) y volvé a previsualizar:</div>
       <div style="font-size:12px">${plan.proveedoresPendientes.map(p=>`<b>${_escAttr(p.valor)}</b> <span style="color:var(--text3)">· ${p.filas} fila${p.filas===1?'':'s'}</span>`).join(' &nbsp; ')}</div>`);
   }
+  // F1.3: avisos de los pares (no traban: la fila entra, ese dato no)
+  const avisos=[...(plan.hijosConflictos||[]).map(c=>`${c.codigo} (${c.marca||'sin marca'}): ${c.detalle}`), ...(plan.paresWarnings||[]).map(w=>`${(w.ctx&&w.ctx.codigo)||'?'}: ${w.motivo}`)];
+  if(avisos.length){
+    sec.push(`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:${mg()} 0 6px"><i class="ti ti-alert-circle"></i> Datos extra que no se cargan (${avisos.length}) — la fila entra igual</div>
+      <div style="max-height:120px;overflow-y:auto;font-size:11px;color:var(--text2)">${avisos.slice(0,200).map(a=>`<div>${_escAttr(a)}</div>`).join('')}${avisos.length>200?`<div>…y ${avisos.length-200} más</div>`:''}</div>`);
+  }
   if(plan.paraCorregir&&plan.paraCorregir.length){
     sec.push(`<div style="font-size:12px;font-weight:600;color:var(--text2);margin:${sec.length?'10px':'0'} 0 6px"><i class="ti ti-pencil"></i> Para corregir a mano en la planilla (no entran): ${plan.paraCorregir.length}</div>
       <div style="max-height:150px;overflow-y:auto"><table class="app-table"><thead><tr><th>Código</th><th>Marca</th><th>Motivo</th><th>Hoja</th></tr></thead><tbody>${
@@ -3258,11 +3367,12 @@ function catRenderPreview(){
 
   const R=plan.resumen;
   document.getElementById('cat-resumen').innerHTML=`<b style="color:var(--success)">${R.nuevos}</b> nuevos · <b style="color:var(--info)">${R.upd}</b> a actualizar${R.reviv?` <span style="color:var(--accent)">(${R.reviv} revividos)</span>`:''} · <span style="color:${R.err?'var(--danger)':'inherit'}">${R.err} con error</span> · <b>${R.aplIns}</b> aplic. nuevas${R.noParseados?` · <span style="color:var(--danger)">${R.noParseados} sin parsear</span>`:''}`;
+  if(R.hijosIns||R.hijosUpd) document.getElementById('cat-resumen').innerHTML+=` · <b>${R.hijosIns}</b> datos extra nuevos${R.hijosUpd?` (${R.hijosUpd} a actualizar)`:''} <span style="color:var(--text3)">(${Object.keys(plan.hijos).filter(t=>plan.hijos[t].insert.length||plan.hijos[t].update.length).map(t=>({codigos_proveedor:'cód. proveedor',oems:'OEM',medidas:'medidas',datos_tecnicos:'datos técnicos'})[t]||t).join(', ')})</span>`;
   if(R.sinMarca) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.sinMarca} sin marca</span>`;
   if(R.provPend) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--danger)">${R.provPend} fila${R.provPend===1?'':'s'} sin proveedor conocido</span>`;
   const nDudas=_catDudasPendientes(plan);
   if(nDudas) document.getElementById('cat-resumen').innerHTML+=` · <span style="color:var(--accent)">${nDudas} pregunta${nDudas===1?'':'s'} sin contestar</span>`;
-  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns)===0 || nDudas>0;
+  document.getElementById('cat-btn-aplicar').disabled=(R.nuevos+R.upd+R.aplIns+R.hijosIns+R.hijosUpd)===0 || nDudas>0;
   document.getElementById('cat-preview-wrap').style.display='block';
   _catVirtPaint();   // pintura inicial (ya con display:block → hay clientHeight)
 }
@@ -3271,7 +3381,8 @@ async function catAplicar(){
   const plan=_catPlan; if(!plan){toast('Previsualizá primero',true);return;}
   if(_catDudasPendientes(plan)){toast('Contestá las preguntas del preview antes de aplicar',true);return;}
   const ins=plan.articulos.insert, upds=plan.articulos.update, apps=plan.aplicaciones.insert;
-  if(!ins.length && !upds.length && !apps.length){toast('No hay nada para aplicar',true);return;}
+  const nHijos=Object.values(plan.hijos||{}).reduce((n,H)=>n+H.insert.length+H.update.length,0);
+  if(!ins.length && !upds.length && !apps.length && !nHijos){toast('No hay nada para aplicar',true);return;}
   const btn=document.getElementById('cat-btn-aplicar'); btn.disabled=true;
   let proc=0, err=0, aplOk=0, aplErr=0, aplSinArt=0;
   // F1.1: (código + marca) → id. Con el código pelado, dos marcas con el mismo código se pisaban
@@ -3308,8 +3419,28 @@ async function catAplicar(){
     const {data,error}=await _sb.from('aplicaciones').insert(aplPayload.slice(i,i+CH)).select('id');
     if(error) aplErr+=Math.min(CH,aplPayload.length-i); else if(data){ aplOk+=data.length; data.forEach(a=>altaAplIds.push(a.id)); }
   }
+  // 3b) F1.3: filas hijas (códigos de proveedor, OEM, medidas, datos técnicos). Resuelven el artículo
+  // igual que las aplicaciones; lo que no resuelve se cuenta (no se pierde en silencio).
+  const hijosOps={altas:{}, updates:[]}; let hijOk=0, hijErr=0, hijSinArt=0;
+  for(const t of Object.keys(plan.hijos||{})){
+    const H=plan.hijos[t]; hijosOps.altas[t]=[];
+    const pay=[];
+    H.insert.forEach(x=>{
+      const idArt=x.idArt!=null?x.idArt:claveToId[_catClaveArt(x.codigo, x.marca_art)];
+      if(!idArt){ hijSinArt++; return; }
+      pay.push(Object.assign({id_articulo:idArt}, x.row));
+    });
+    for(let i=0;i<pay.length;i+=CH){
+      const {data,error}=await _sb.from(t).insert(pay.slice(i,i+CH)).select('id');
+      if(error) hijErr+=Math.min(CH,pay.length-i); else if(data){ hijOk+=data.length; data.forEach(r=>hijosOps.altas[t].push(r.id)); }
+    }
+    for(const u of H.update){
+      const {error}=await _sb.from(t).update(u.set).eq('id',u.id);
+      if(error) hijErr++; else { hijOk++; hijosOps.updates.push({tabla:t, id:u.id, antes:u.antes}); }
+    }
+  }
   // 4) bitácora + snapshot de operaciones (para poder DESHACER esta importación desde "Gestión de datos")
-  const operaciones=_catBuildOperaciones(altaArtIds, altaAplIds, upds);
+  const operaciones=_catBuildOperaciones(altaArtIds, altaAplIds, upds, hijosOps);
   await _sb.from('importaciones').insert([{tipo:'CATALOGO', archivo_nombre:document.getElementById('cat-filename').textContent, estado:'FINALIZADA', registros_procesados:proc, registros_error:err, operaciones}]);
 
   btn.innerHTML='<i class="ti ti-check"></i> Aplicar importación';
@@ -3317,7 +3448,10 @@ async function catAplicar(){
   if(err) msg+=` · ${err} con error`;
   if(aplErr) msg+=` · ${aplErr} aplic. fallaron`;
   if(aplSinArt) msg+=` · ${aplSinArt} aplicaciones sin artículo`;
-  toast(msg, !!(err||aplErr||aplSinArt));
+  if(hijOk) msg+=` · ${hijOk} datos extra (códigos/medidas/…)`;
+  if(hijErr) msg+=` · ${hijErr} datos extra fallaron`;
+  if(hijSinArt) msg+=` · ${hijSinArt} datos extra sin artículo`;
+  toast(msg, !!(err||aplErr||aplSinArt||hijErr||hijSinArt));
   initImportCat();
   renderAdminArt();
 }
@@ -3410,6 +3544,12 @@ async function gestEjecutarDeshacer(){
     await _gestChunkUpdate('aplicaciones', d.softDelApl, {deleted_at:now});
     await _gestChunkUpdate('articulos',   d.softDelArt, {deleted_at:now});
     for(const r of d.restoreArt){ const {error}=await _sb.from('articulos').update(r.set).eq('id',r.id); if(error) throw error; }
+    // F1.3: filas hijas creadas por la importación → se borran; las actualizadas → vuelven a su valor
+    for(const t of Object.keys(d.borrarHijos||{})){
+      const ids=d.borrarHijos[t];
+      for(let i=0;i<ids.length;i+=100){ const {error}=await _sb.from(t).delete().in('id',ids.slice(i,i+100)); if(error) throw error; }
+    }
+    for(const r of (d.restoreHijos||[])){ const {error}=await _sb.from(r.tabla).update(r.set).eq('id',r.id); if(error) throw error; }
     // revivir (deshacer de una limpieza)
     await _gestChunkUpdate('aplicaciones', d.reviveApl, {deleted_at:null});
     await _gestChunkUpdate('articulos',   d.reviveArt, {deleted_at:null});
