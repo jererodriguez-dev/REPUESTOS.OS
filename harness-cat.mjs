@@ -1287,21 +1287,22 @@ head('F1.3e — datos técnicos y la fila de ejemplo de la PLANILLA-MAESTRA');
   eq(p.hijos.medidas.insert.length, 3, '3 medidas');
   eq(p.hijos.oems.insert.length, 1, '1 OEM');
   eq(p.hijos.codigos_proveedor.insert.length, 2, '2 códigos de proveedor');
-  eq(p.resumen.hijosIns, 9, 'resumen: 9 datos extra');
+  eq(p.resumen.hijosIns, 11, 'resumen: 11 datos extra (9 + 2 equivalencias, F1.3b prendido 14/10)');
   eq(p.paresWarnings.length, 0, 'sin avisos');
 }
 
 // ===========================================================================
 // F1.3b — equivalencias: se leen (F1.8 las usa) pero no se guardan hasta correr su SQL
 // ===========================================================================
-head('F1.3b — equivalencias leídas, sin guardar todavía');
+head('F1.3b — equivalencias leídas y guardadas en codigos_equivalentes');
 {
   const H = ['Codigo','Descripcion','Marca articulo','Nombre equivalencia 1','Equivalencia 1','Nombre equivalencia 2','Equivalencia 2'];
   const row = (c, n1, e1, n2, e2) => ({ 'Codigo':c, 'Descripcion':'D', 'Marca articulo':'SKF', 'Nombre equivalencia 1':n1||'', 'Equivalencia 1':e1||'', 'Nombre equivalencia 2':n2||'', 'Equivalencia 2':e2||'' });
   const p = _catPlanImport([{ nombre:'M', rubroId:'r', rubroNombre:'R', headers:H, rows:[ row('6203-2RS','NSK','6203DDU','FAG','6203-2RSR'), row('6203-2RS','NSK','6203-DDU') ] }], _catAutodetect(H), {}, [], []);
   eq(p.equivalencias.map(e => e.marca_texto + ' ' + e.codigo_eq).join(' | '), 'NSK 6203DDU | FAG 6203-2RSR', '2 equivalencias (la repetida con guion no cuenta dos veces)');
-  ok(!('codigos_equivalentes' in p.hijos), 'no hay filas hijas de equivalencias: el enchufe está apagado hasta correr el SQL');
-  eq(core.CAT_ENCHUFADOS.includes('codigos_equivalentes'), false, 'CAT_ENCHUFADOS no lo incluye');
+  // 14/10: SQL corrido en la real → enchufe prendido
+  eq(core.CAT_ENCHUFADOS.includes('codigos_equivalentes'), true, 'CAT_ENCHUFADOS lo incluye');
+  eq((p.hijos.codigos_equivalentes ? p.hijos.codigos_equivalentes.insert : []).map(x => x.row.marca_texto + ' ' + x.row.codigo).join(' | '), 'NSK 6203DDU | FAG 6203-2RSR', 'se guardan las 2 equivalencias (fábrica + código, sin repetir)');
 }
 
 // ===========================================================================
